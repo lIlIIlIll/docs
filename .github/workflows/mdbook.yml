@@ -1,0 +1,234 @@
+# Sample workflow for building and deploying a mdBook site to GitHub Pages
+#
+# To get started with mdBook see: https://rust-lang.github.io/mdBook/index.html
+#
+name: Deploy mdBook site to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force rebuild (skip SHA cache check)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 1-10 * * 1-5"
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MDBOOK_VERSION: 0.4.52
+      FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_rebuild || vars.FORCE_REBUILD || 'false' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare cache dirs
+        run: |
+          set -euxo pipefail
+          mkdir -p .ext-build-cache
+          mkdir -p "$HOME/.cargo/bin" "$HOME/.cargo/registry" "$HOME/.cargo/git" target
+
+      - name: Clone cangjie_runtime
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b dev ext
+          ls -R ext
+
+      - name: Clone cangjie-stdx
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b dev ext_stdx
+          ls -R ext_stdx
+
+      - name: Get ext SHAs
+        id: extsha
+        run: |
+          set -euo pipefail
+          RUNTIME_SHA=$(git -C ext rev-parse HEAD)
+          STDX_SHA=$(git -C ext_stdx rev-parse HEAD)
+          echo "runtime_sha=$RUNTIME_SHA" >> $GITHUB_OUTPUT
+          echo "stdx_sha=$STDX_SHA"       >> $GITHUB_OUTPUT
+          echo "Runtime: $RUNTIME_SHA"
+          echo "Stdx   : $STDX_SHA"
+
+      - name: Check cache by SHAs
+        id: cachecheck
+        if: ${{ env.FORCE_REBUILD != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: .ext-build-cache
+          key: ext-sha-${{ steps.extsha.outputs.runtime_sha }}-${{ steps.extsha.outputs.stdx_sha }}
+
+      - name: Skip if no upstream changes
+        if: steps.cachecheck.outputs.cache-hit == 'true'
+        run: |
+          echo "No upstream changes. Skipping build & deploy."
+          exit 0
+
+      - name: Prepare std book
+        run: |
+          set -euxo pipefail
+          mkdir -p src/vendor/gitcode
+          rsync -a --delete ext/stdlib/doc/libs/ src/vendor/gitcode/
+
+          cp -r src/vendor/gitcode/* src/
+          rm -r src/std_en
+          rm src/summary_cjnative_EN.md
+          mv -f src/summary_cjnative.md src/SUMMARY.md
+
+      - name: Prepare stdx book (isolated build dir)
+        run: |
+          set -euxo pipefail
+          mkdir -p stdx_book/src stdx_book/theme stdx_book/scripts
+          rsync -a --delete ext_stdx/doc/* stdx_book/src/
+          test -f stdx_book/src/summary_cjnative.md && mv -f stdx_book/src/summary_cjnative.md stdx_book/src/SUMMARY.md
+          cp -r theme/* stdx_book/theme/
+          cp scripts/* stdx_book/scripts/
+          cp book.toml stdx_book/book.toml
+
+      - name: Sanity check
+        run: |
+          ls -la src | sed -n '1,200p'
+          test -f src/SUMMARY.md
+          sed -n '1,10p' src/SUMMARY.md
+
+          ls -la stdx_book/src | sed -n '1,80p'
+          echo "ls stdx_book/theme"
+          ls -la stdx_book/theme/*
+
+          echo "ls stdx_book/scripts"
+
+          ls -la stdx_book/scripts/*
+          test -f stdx_book/src/SUMMARY.md
+          sed -n '1,10p' stdx_book/book.toml
+          sed -n '1,10p' stdx_book/scripts/table.py
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-mdbook
+          restore-keys: |
+            ${{ runner.os }}-cargo-mdbook
+
+      - name: Install Rust (for cargo)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mdBook (pinned)
+        run: |
+          if ! command -v mdbook >/dev/null; then
+            cargo install --locked mdbook --version ${MDBOOK_VERSION}
+          fi
+          mdbook --version
+
+      - name: Install mdbook-admonish (if needed)
+        shell: bash
+        env:
+          MDBOOK_ADMONISH_VERSION: "1.20.0"
+        run: |
+          set -euo pipefail
+          want_ver="mdbook-admonish $MDBOOK_ADMONISH_VERSION"
+          if ! command -v mdbook-admonish >/dev/null; then
+            echo "mdbook-admonish not found. Installing..."
+            cargo install mdbook-admonish --locked --version "$MDBOOK_ADMONISH_VERSION"
+          else
+            have_ver="$(mdbook-admonish --version || true)"
+            if [[ "$have_ver" == "$want_ver" ]]; then
+              echo "mdbook-admonish already $have_ver, skip."
+            else
+              echo "mdbook-admonish is $have_ver, want $want_ver. Reinstalling..."
+              cargo install mdbook-admonish --locked --version "$MDBOOK_ADMONISH_VERSION" --force
+            fi
+          fi
+
+      - name: Install mdbook-pagetoc(if needed)
+        shell: bash
+        env:
+          MDBOOK_PAGETOC_VERSION: "0.2.2"
+        run: |
+          set -euo pipefail
+          if ! command -v mdbook-pagetoc >/dev/null; then
+            echo "mdbook-pagetoc not found. Installing..."
+            cargo install mdbook-pagetoc --locked --version "$MDBOOK_PAGETOC_VERSION"
+          fi
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Print mdBook env & where is book.toml
+        run: |
+          set -euxo pipefail
+          mdbook -V
+          echo "WORKSPACE = $GITHUB_WORKSPACE"
+          echo "--- repo root ---"
+          ls -la
+          echo "--- show book.toml (if any) ---"
+          sed -n '1,120p' book.toml || true
+
+      - name: Build std mdBook
+        run: |
+          set -euxo pipefail
+          mdbook-admonish install
+          BASE_TITLE="Cangjie Std API"
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$GITHUB_WORKSPACE/book/std"
+          echo "--- built dirs ---"
+          find "$GITHUB_WORKSPACE" -maxdepth 4 -type d -name book -print
+          echo "--- book/ listing ---"
+          ls -la "$GITHUB_WORKSPACE/book/std"
+
+      - name: Build cangjie-stdx into /book/stdx
+        run: |
+          set -euxo pipefail
+          ls -al stdx_book/
+          cd stdx_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Stdx API"  # 或者用 tomlq/yq 读 book.toml
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$GITHUB_WORKSPACE/book/stdx"
+          test -f "$GITHUB_WORKSPACE/book/stdx/index.html"
+
+      - name: Assert book exists
+        run: |
+          set -euxo pipefail
+          test -d "$GITHUB_WORKSPACE/book"
+          test -f "$GITHUB_WORKSPACE/book/std/index.html" || (echo "index.html missing; build likely ran in wrong dir" && exit 2)
+          grep -nE 'pagetoc\.(js|css)' $GITHUB_WORKSPACE/book/std/index.html || echo '未引入 pagetoc 资源'
+          find book -path '*/theme/pagetoc.*' -print || echo 'book/std/theme 下没找到 pagetoc.*'
+          grep -nE 'class="pagetoc|id="pagetoc' $GITHUB_WORKSPACE/book/std/index.html || echo '页面里没有 pagetoc 容器（JS 可能没运行）'
+          find book -maxdepth 4 -type f -name 'toc.js' -print
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./book
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

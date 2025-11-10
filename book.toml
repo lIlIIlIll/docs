@@ -1,0 +1,53 @@
+[book]
+title = "Cangjie Std API"
+language = "cn"
+src = "src"
+
+[build]
+build-dir = "./output/std_api_zh"
+create-missing = true
+
+[output.html.fold]
+enable = true # whether or not to enable section folding
+level = 0     # the depth to start folding
+
+[output.html.search]
+limit-results = 20
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 2
+boost-paragraph = 1
+expand = true
+heading-split-level = 2
+
+[preprocessor._0_table_joiner]
+command = "python3 scripts/table.py"
+
+[preprocessor._1_blockquote_admonish]
+command = "python3 scripts/blockquote_admonish.py"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.2"    # do not edit: managed by `mdbook-admonish install`
+
+[preprocessor.pagetoc]
+command = "mdbook-pagetoc"
+renderer = ["html"]
+
+[output.html]
+default-theme = "latte"
+preferred-dark-theme = "macchiato"
+no-section-label = true
+additional-css = [
+  "./theme/custom.css",
+  "./theme/pagetoc.css",
+  "./theme/catppuccin-admonish.css",
+  "./theme/catppuccin.css",
+  "./theme/table-fullwidth.css",
+  "./theme/hljs-cangjie.js",
+]
+additional-js = [
+  "./theme/pagetoc.js",
+  "./theme/elasticlunr.js",
+  "./theme/fzf.umd.js",
+]

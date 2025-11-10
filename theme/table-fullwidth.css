@@ -1,0 +1,37 @@
+/* 让正文里的表格占满所在容器（右侧内容栏）的宽度 */
+.content table {
+  width: 100% !important;      /* 撑满父节点 */
+  max-width: none !important;   /* 取消任何残留的 max-width */
+  table-layout: fixed;          /* 固定布局，列更均匀；需要自动换行配合 */
+  border-collapse: collapse;
+}
+
+/* 避免内容溢出导致横向滚动条过长 */
+.content table th,
+.content table td {
+  word-break: break-word;       /* 长词/URL换行 */
+  white-space: normal;          /* 不强制单行 */
+}
+
+/* 单元格里的代码别撑破表格 */
+.content table code,
+.content table pre {
+  white-space: pre-wrap;        /* 代码可换行 */
+  word-break: break-word;
+}
+
+/* 图片也跟着自适应 */
+.content table img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 窄屏降级：保留滚动，防止布局崩 */
+@media (max-width: 900px) {
+  .content table {
+    table-layout: auto;         /* 放宽限制，配合横向滚动更自然 */
+    display: block;
+    overflow-x: auto;
+  }
+}
+
