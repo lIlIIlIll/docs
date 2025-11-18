@@ -39,14 +39,13 @@ default-theme = "latte"
 preferred-dark-theme = "macchiato"
 no-section-label = true
 additional-css = [
-  "./theme/custom.css",
   "./theme/pagetoc.css",
   "./theme/catppuccin-admonish.css",
   "./theme/catppuccin.css",
   "./theme/table-fullwidth.css",
-  "./theme/hljs-cangjie.js",
 ]
 additional-js = [
+  "./theme/hljs-cangjie.js",
   "./theme/pagetoc.js",
   "./theme/elasticlunr.js",
   "./theme/fzf.umd.js",

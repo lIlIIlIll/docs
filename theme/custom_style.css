@@ -1,0 +1,88 @@
+html.light .hljs-comment,
+html.light .hljs-quote {
+  color: #575757;
+}
+
+html.light .hljs-keyword,
+html.light .hljs-name,
+html.light .hljs-section,
+html.light .hljs-selector-tag {
+    color: #2871cc
+}
+
+html.light .hljs-template-variable,
+html.light .hljs-variable {
+    color: #49b3ac
+}
+
+html.light .hljs-regexp,
+html.light .hljs-selector-attr,
+html.light .hljs-selector-pseudo,
+html.light .hljs-string {
+    color: #689932
+}
+
+html.light .hljs-bullet,
+html.light .hljs-link,
+html.light .hljs-literal,
+html.light .hljs-meta,
+html.light .hljs-number,
+html.light .hljs-symbol {
+    color: #3e9fcc
+}
+
+html.light .hljs-attr,
+html.light .hljs-built_in,
+html.light .hljs-builtin-name,
+html.light .hljs-doctag,
+html.light .hljs-javadoc,
+html.light .hljs-params,
+html.light .hljs-title,
+html.light .hljs-type {
+    color: #6f79a9
+}
+
+html.light .hljs-attribute,
+html.light .hljs-subst {
+    color: #000
+}
+
+html.light .hljs-formula {
+    font-style: italic
+}
+
+html.light .hljs-selector-class,
+html.light .hljs-selector-id {
+    color: #e69a3a
+}
+
+html.light .hljs-package {
+    color: #242728
+}
+
+html.light .hljs-doctag,
+html.light .hljs-strong {
+    font-weight: bold
+}
+
+html.light .hljs-emphasis {
+    font-style: italic
+}
+
+html.light .hljs {
+  display: block;
+  overflow-x: auto;
+  background: #f1f3f4;
+  color: #000;
+}
+
+html.light .hljs-addition {
+  color: #22863a;
+  background-color: #f0fff4;
+}
+
+html.light .hljs-deletion {
+  color: #b31d28;
+  background-color: #ffeef0;
+}
+
