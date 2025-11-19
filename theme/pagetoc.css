@@ -5,24 +5,6 @@
 * Browsers: last 4 version
 */
 
-/* :root { */
-    /* --toc-width: 270px; */
-    /* --center-content-toc-shift: calc(-1 * var(--toc-width) / 2); */
-/* } */
-
-/* .nav-chapters { */
-    /* adjust width of buttons that bring to the previous or the next page */
-    /* min-width: 50px; */
-/* } */
-
-/* .previous { */
-    /*
-    adjust the space between the left sidebar or the left side of the screen 
-    and the button that leads to the previous page
-    */
-    /* margin-left: var(--page-padding); */
-/* } */
-
 @media only screen {
     main {
         display: -webkit-box;
@@ -58,8 +40,8 @@
 
     .content-wrap {
         width: 100%;
-        margin-left: -10rem;
-        margin-right: 5rem;
+        /* margin-left: -10rem; */
+        /* margin-right: 5rem; */
     }
 
     #sidetoc {

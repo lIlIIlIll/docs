@@ -1,201 +1,556 @@
-hljs.registerLanguage("cangjie", function (hljs) {
-  "use strict";
-
-  // ---- 关键字 / 字面量 / 内建 / 类型 ----
-  var KW = {
-    keyword:
-      "package import class extend func init prop " +
-      "public private protected internal mut " +
-      "abstract final sealed open override static " +
-      "operator foreign macro unsafe " +
-      "if else for while break continue return throw try catch finally " +
-      "match case when in is as where get set new this super " +
-      "let var const struct main ",
-    literal: "true false None Some _ unit",
-    built_in: "print println eprint eprintln spawn len range assert panic",
-    type:
-      "Int UInt Int8 Int16 Int32 Int64 " +
-      "UInt8 UInt16 UInt32 UInt64 " +
-      "Float16 Float32 Float64 Rune String CString Unit Any",
-  };
-
-  // ---- 数字字面量（含后缀 i/u/f + 位宽）----
-  var SUFFIX = "(?:[iuf](?:8|16|32|64|128)?)";
-  var INT_CORE = "(?:0|[1-9](?:_?[0-9])*)";
-  var BIN = "0b[01](?:_?[01])*";
-  var OCT = "0o[0-7](?:_?[0-7])*";
-  var HEX = "0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*";
-
-  var DEC_FRAC =
-    "(?:" + INT_CORE + "\\.(?:[0-9](?:_?[0-9])*)|\\.[0-9](?:_?[0-9])*)";
-  var DEC_EXP = "[eE][+-]?[0-9](?:_?[0-9])*";
-  var FLOAT_CORE =
-    "(?:" + DEC_FRAC + "(?:" + DEC_EXP + ")?|" + INT_CORE + DEC_EXP + ")";
-
-  var NUM = {
+/*
+ * Language: Cangjie
+ */
+function cangjie(hljs) {
+  const regex = hljs.regex;
+  const IDENTIFIER =
+    "((`[\u00C0-\u9fa5a-zA-Z_][\u00C0-\u9fa5a-zA-Z_0-9]*`)|([\u00C0-\u9fa5a-zA-Z_][\u00C0-\u9fa5a-zA-Z_0-9]*))";
+  const NUMBER_SUFFIX = "(u8|u16|u32|u64|i8|i16|i32|i64|f16|f32|f64)\?";
+  const KEYWORDS = [
+    "as",
+    "abstract",
+    "break",
+    "Bool",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "Rune",
+    "do",
+    "else",
+    "enum",
+    "extend",
+    "for",
+    "from",
+    "func",
+    "false",
+    "finally",
+    "foreign",
+    "Float16",
+    "Float32",
+    "Float64",
+    "if",
+    "in",
+    "is",
+    "init",
+    "import",
+    "interface",
+    "Int8",
+    "Int16",
+    "Int32",
+    "Int64",
+    "IntNative",
+    "let",
+    "mut",
+    "main",
+    "macro",
+    "match",
+    "Nothing",
+    "open",
+    "operator",
+    "override",
+    "prop",
+    "public",
+    "internal",
+    "package",
+    "private",
+    "protected",
+    "quote",
+    "redef",
+    "return",
+    "sealed",
+    "spawn",
+    "super",
+    "static",
+    "struct",
+    "synchronized",
+    "try",
+    "this",
+    "true",
+    "type",
+    "throw",
+    "This",
+    "unsafe",
+    "Unit",
+    "UInt8",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UIntNative",
+    "var",
+    "VArray",
+    "where",
+    "while",
+  ];
+  const NUMBERS = {
     className: "number",
     variants: [
-      { begin: "\\b" + BIN + "(?:" + SUFFIX + ")?\\b" },
-      { begin: "\\b" + OCT + "(?:" + SUFFIX + ")?\\b" },
-      { begin: "\\b" + HEX + "(?:" + SUFFIX + ")?\\b" },
-      { begin: "\\b" + FLOAT_CORE + "(?:" + SUFFIX + ")?\\b" },
-      { begin: "\\b" + INT_CORE + "(?:" + SUFFIX + ")?\\b" },
+      { begin: "\\b(\\.)?0o([0-7_]+)" + NUMBER_SUFFIX },
+      {
+        begin:
+          "\\b(\\.)?0x([A-Fa-f0-9_]*)" +
+          NUMBER_SUFFIX +
+          "([eEpP][+-]?[0-9_]+)?",
+      },
+      {
+        begin:
+          "\\b(\\.)?(\\d[\\d_]*(\\.[0-9_]+)?([eEpP][+-]?[0-9_]+)?)" +
+          NUMBER_SUFFIX,
+      },
+      { begin: "\\b(\\.)?b'" + IDENTIFIER + "'" },
+      { begin: "\\b(\\.)?b'" + "\\\\" + IDENTIFIER + "'" },
+      { begin: "\\b(\\.)?b'" + IDENTIFIER + "'" + "{" + "([0-9]+)" + "}" },
+      {
+        begin:
+          "\\b(\\.)?b'" + "\\\\" + IDENTIFIER + "{" + "([0-9]+)" + "}" + "'",
+      },
+      { begin: "(^|[^\\.])(\\.\\d+)([eEpP][+-]?[0-9_]+)?" + NUMBER_SUFFIX },
     ],
     relevance: 0,
   };
 
-  // ---- 字符 / 字符串 & 转义 / Unicode / 插值 ${ ... } ----
-  var CHAR = {
-    className: "string",
-    begin: /'/,
-    end: /'/,
-    illegal: /\\n/,
+  const FUNC_TYPE = {
+    begin: "(\\()",
+    end: "(\\)|/|{|=)",
     contains: [
-      { className: "escape", begin: /\\[nrt'\\"]/ },
-      { className: "escape", begin: /\\u\{[0-9A-Fa-f_]+\}/ },
+      "self", // 递归调用自身以支持嵌套泛型
+      hljs.C_LINE_COMMENT_MODE,
+      hljs.COMMENT("/\\*", "\\*/", { contains: ["self"] }),
+      {
+        begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+        relevance: 0,
+        className: "keyword",
+      },
+      {
+        begin: "(\\+|\\-|\\*|\\/|\\%)(\\s*)" + IDENTIFIER,
+        relevance: 0,
+        className: "variable",
+      },
+      {
+        begin: IDENTIFIER + "\\b" + "(?!(\\s*)(:|\\+|\\-|\\*|\\/|\\%))",
+        relevance: 0,
+        className: "title.class",
+      },
+      {
+        begin: "\\b" + IDENTIFIER + "\\b",
+        relevance: 0,
+        className: "variable",
+      },
+      {
+        begin: ",",
+        relevance: 0,
+      },
+      NUMBERS,
     ],
   };
-
-  var SUBST = {
-    className: "subst",
-    begin: /\$\{/,
-    end: /\}/,
-    keywords: KW,
-    contains: [], // 下面补
-  };
-
-  var STR = {
-    className: "string",
-    begin: /"/,
-    end: /"/,
+  const GENERICS = {
+    begin: "(<)(?!(:|-))",
+    end: "((>)|\\n|\\r)",
     contains: [
-      { begin: "{{" }, // 容错插值大括号
-      { begin: "}}" },
-      { className: "escape", begin: /\\[nrt'"\\]/ },
-      { className: "escape", begin: /\\u\{[0-9A-Fa-f_]+\}/ },
-      SUBST,
+      "self", // 递归调用自身以支持嵌套泛型
+      hljs.C_LINE_COMMENT_MODE,
+      hljs.COMMENT("/\\*", "\\*/", { contains: ["self"] }),
+      FUNC_TYPE,
+      {
+        begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+        relevance: 0,
+        className: "keyword",
+      },
+      {
+        begin: IDENTIFIER,
+        relevance: 0,
+        className: "title.class",
+      },
+      {
+        begin: ",",
+        relevance: 0,
+      },
+      {
+        begin: "->",
+        relevance: 0,
+      },
+      NUMBERS,
     ],
   };
-
-  // ---- 类型名（大写开头），作为独立 token 标成 .hljs-type ----
-  var TYPE_NAME = {
-    className: "type",
-    begin: /\b[A-Z]\w*\b/,
-    relevance: 0,
-  };
-
-  // 插值里面也能识别注释 / 字符串 / 数字 / 注解 / 类型名
-  SUBST.contains = [
-    hljs.C_LINE_COMMENT_MODE,
-    hljs.C_BLOCK_COMMENT_MODE,
-    STR,
-    CHAR,
-    NUM,
-    { className: "meta", begin: /@[_A-Za-z]\w*/ },
-    TYPE_NAME,
+  const STRINGS = [
+    {
+      className: "string",
+      begin: "'",
+      end: "'",
+      contains: [hljs.BACKSLASH_ESCAPE],
+    },
+    {
+      className: "string",
+      begin: '"',
+      end: '"',
+      contains: [
+        {
+          className: "subst",
+          begin: "\\$\\{",
+          end: "\\}",
+          contains: [
+            "self",
+            {
+              className: "keyword",
+              begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+            },
+            {
+              className: "title.function",
+              begin: "\\b(" + KEYWORDS.join("|") + ")\\b" + "(?=(\\s*)\\()",
+            },
+            {
+              className: "title.function",
+              begin: IDENTIFIER + "(?=(\\s*)\\()",
+            },
+            {
+              className: "variable",
+              begin: IDENTIFIER,
+            },
+            {
+              className: "number",
+              begin: "\\b(\\.)?\\d+(\\.\\d+)?",
+              relevance: 0,
+            },
+            {
+              className: "string",
+              begin: '"',
+              end: '"',
+            },
+          ],
+        },
+        hljs.BACKSLASH_ESCAPE,
+      ],
+    },
+    {
+      className: "string",
+      begin: '"""',
+      end: '"""',
+      contains: [
+        {
+          className: "subst",
+          begin: "\\$\\{",
+          end: "\\}",
+          contains: [
+            "self",
+            {
+              className: "keyword",
+              begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+            },
+            {
+              className: "title.function",
+              begin: "\\b(" + KEYWORDS.join("|") + ")\\b" + "(?=(\\s*)\\()",
+            },
+            {
+              className: "title.function",
+              begin: IDENTIFIER + "(?=(\\s*)\\()",
+            },
+            {
+              className: "variable",
+              begin: IDENTIFIER,
+            },
+            {
+              className: "number",
+              begin: "\\b(\\.)?\\d+(\\.\\d+)?",
+              relevance: 0,
+            },
+            {
+              className: "string",
+              begin: '"',
+              end: '"',
+            },
+          ],
+        },
+        hljs.BACKSLASH_ESCAPE,
+      ],
+    },
+    {
+      className: "string",
+      variants: [
+        { begin: /b?(#*)("|')(.|\n)*?("|')\1(?!#)/ },
+        { begin: /b?'\\?(x\w{2}|u\w{4}|U\w{8}|.)'/ },
+      ],
+    },
   ];
-
-  // ---- 文档注释 ----
-  var LINE_DOC = {
-    className: "doctag",
-    begin: /\/\/\/\s?/,
-    end: /$/,
-    relevance: 0,
-  };
-
-  var BLOCK_DOC = hljs.inherit(hljs.C_BLOCK_COMMENT_MODE, {
-    className: "doctag",
-    begin: /\/\*\*+/,
-    end: /\*+\//,
-    contains: [{ begin: /@[\w.]+/ }],
-    relevance: 0,
-  });
-
-  // ---- 普通注释（直接用 C 风格）----
-  var LINE_COMMENT = hljs.C_LINE_COMMENT_MODE;
-  var BLOCK_COMMENT = hljs.C_BLOCK_COMMENT_MODE;
-
-  // ---- 注解 / 属性 ----
-  var ANNOT = { className: "meta", begin: /@[_A-Za-z]\w*/, relevance: 1 };
-
-  // ---- 声明里的名字（class / struct / func 名）----
-  var DECL_TITLE = {
-    className: "title",
-    begin: /\b[_A-Za-z]\w*\b/,
-    relevance: 0,
-  };
-
-  // ---- 泛型参数 <T, U?> ----
-  var GENERIC = {
-    begin: /<(?!:)/, // 避免 "<:" 之类误触发
-    end: />/,
-    relevance: 0,
-    keywords: KW, // 泛型里照样识别关键字/类型
-    illegal: /:/, // 避免吞到后面的冒号
-    contains: [
-      "self", // 允许嵌套 <A<B<C>>>
-      TYPE_NAME,
-      NUM,
-      STR,
-      CHAR,
-      { begin: /[,?]/, relevance: 0 },
-      LINE_COMMENT,
-      BLOCK_COMMENT,
-    ],
-  };
-
-  // ---- class / struct 声明 ----
-  var CLASS_DECL = {
-    className: "class",
-    beginKeywords: "class struct",
-    end: /[{;]/,
-    excludeEnd: true,
-    keywords: KW,
-    contains: [
-      ANNOT,
-      DECL_TITLE, // 类名 / 结构体名
-      GENERIC,
-      LINE_COMMENT,
-      BLOCK_COMMENT,
-    ],
-  };
-
-  // ---- func / init 声明 ----
-  var FUNC_DECL = {
-    className: "function",
-    beginKeywords: "func init",
-    end: /[{;]/,
-    excludeEnd: true,
-    keywords: KW,
-    contains: [
-      ANNOT,
-      DECL_TITLE, // 函数名
-      GENERIC,
-      LINE_COMMENT,
-      BLOCK_COMMENT,
-      // 想进一步搞参数列表/返回类型，可以再加规则
-    ],
-  };
-
-  // ---- 汇总语言定义 ----
   return {
-    name: "cangjie",
-    aliases: ["cj", "cangjie"],
-    keywords: KW,
+    name: "Cangjie",
+    aliases: ["cj"],
+    keywords: KEYWORDS,
+    illegal: "</",
     contains: [
-      LINE_DOC,
-      BLOCK_DOC,
-      LINE_COMMENT,
-      BLOCK_COMMENT,
-      ANNOT,
-      CLASS_DECL,
-      FUNC_DECL,
-      STR,
-      CHAR,
-      NUM,
-      TYPE_NAME,  // 顶层只把“大写开头”的名字当类型，不会吃掉所有标识符
-      GENERIC,
+      hljs.C_LINE_COMMENT_MODE,
+      hljs.COMMENT("/\\*", "\\*/", { contains: ["self"] }),
+      NUMBERS,
+      ...STRINGS,
+      {
+        className: "symbol",
+        begin: /'[a-zA-Z_][a-zA-Z0-9_]*/,
+      },
+      {
+        begin: [/(?:package)/, /\s+/, IDENTIFIER + "(\\." + IDENTIFIER + ")*"],
+        className: {
+          1: "keyword",
+          3: "package",
+        },
+      },
+      {
+        begin: [
+          /(?:from)/,
+          /\s+/,
+          IDENTIFIER + "(\\." + IDENTIFIER + ")*",
+          /\s+/,
+          /(?:import)/,
+          /\s+/,
+          IDENTIFIER + "(\\." + IDENTIFIER + ")*" + "(\\.\\*)?",
+        ],
+        className: {
+          1: "keyword",
+          3: "package",
+          5: "keyword",
+          7: "package",
+        },
+      },
+      {
+        begin: [
+          /(?:import)/,
+          /\s+/,
+          IDENTIFIER + "(\\." + IDENTIFIER + ")*" + "(\\.\\*)?",
+          /\s+/,
+          /(?:as)/,
+          /\s+/,
+          IDENTIFIER + "(\\." + IDENTIFIER + ")*" + "(\\.\\*)?",
+        ],
+        className: {
+          1: "keyword",
+          3: "package",
+          5: "keyword",
+          7: "package",
+        },
+      },
+      {
+        begin: [
+          /(?:import)/,
+          /\s+/,
+          "(" +
+            IDENTIFIER +
+            "\\.)*\\{(" +
+            IDENTIFIER +
+            "(\\." +
+            IDENTIFIER +
+            ")*" +
+            "(\\.\\*)?" +
+            ",?\\s*)+\\}",
+        ],
+        className: {
+          1: "keyword",
+          3: "package",
+        },
+      },
+      {
+        begin: [
+          /(?:import)/,
+          /\s+/,
+          IDENTIFIER + "(\\." + IDENTIFIER + ")*" + "(\\.\\*)?",
+        ],
+        className: {
+          1: "keyword",
+          3: "package",
+        },
+      },
+      {
+        begin: [/main/, /\s*/, /\(/, /\)/],
+        className: {
+          1: "keyword",
+        },
+      },
+      {
+        begin: [/func/, /\s+/, IDENTIFIER],
+        className: {
+          1: "keyword",
+          3: "title.function",
+        },
+      },
+      {
+        className: "keyword",
+        relevance: 0,
+        begin: regex.concat(
+          /\b/,
+          "\\b(" + KEYWORDS.join("|") + ")\\b",
+          regex.lookahead(/\s*\(/),
+        ),
+      },
+      {
+        className: "title.function",
+        relevance: 0,
+        begin: regex.concat(
+          /\b/,
+          IDENTIFIER,
+          regex.lookahead(/(?<=[\t\s]*)\(/),
+        ),
+      },
+      {
+        className: "title.function",
+        relevance: 0,
+        begin: regex.concat("`" + IDENTIFIER + "`", regex.lookahead(/\s*\(/)),
+      },
+      {
+        begin: [/@/, IDENTIFIER + "(\\." + IDENTIFIER + ")*"],
+        className: {
+          2: "title.function",
+        },
+      },
+      {
+        begin: [/let|var|const|prop/, /\s+/, IDENTIFIER],
+        className: {
+          1: "keyword",
+          3: "variable",
+        },
+      },
+      {
+        begin: [/type/, /\s+/, IDENTIFIER],
+        className: {
+          1: "keyword",
+          3: "title.class",
+        },
+      },
+      {
+        begin: [
+          /(?:class|interface|enum|struct|extend)/,
+          /\s+/,
+          "\\b(" + KEYWORDS.join("|") + ")\\b",
+        ],
+        className: {
+          1: "keyword",
+          3: "keyword",
+        },
+      },
+      {
+        begin: [/(?:class|interface|enum|struct|extend)/, /\s+/, IDENTIFIER],
+        className: {
+          1: "keyword",
+          3: "title.class",
+        },
+      },
+      {
+        begin: [
+          /VArray/,
+          /\s*/,
+          /</,
+          /\s*/,
+          "\\b(" + KEYWORDS.join("|") + ")\\b",
+          /\s*/,
+          /,/,
+          /\s*/,
+          /\$/,
+          /([0-9]+)/,
+          />/,
+        ],
+        className: {
+          1: "keyword",
+          5: "keyword",
+          10: "number",
+        },
+      },
+      {
+        begin: [
+          /VArray/,
+          /\s*/,
+          /</,
+          /\s*/,
+          IDENTIFIER,
+          /\s*/,
+          /,/,
+          /\s*/,
+          /\$/,
+          /([0-9]+)/,
+          />/,
+        ],
+        className: {
+          1: "keyword",
+          5: "title.class",
+          10: "number",
+        },
+      },
+      {
+        begin: [/VArray/, /\s*/, regex.lookahead(/\s*\(/)],
+        className: {
+          1: "keyword",
+        },
+      },
+      {
+        begin: [/init/, /\s*/, regex.lookahead(/\s*\(/)],
+        className: {
+          1: "keyword",
+        },
+      },
+      {
+        begin: [/~init/, /\s*/, regex.lookahead(/\s*\(/)],
+        className: {
+          1: "keyword",
+        },
+      },
+      {
+        begin: "(:|-\\>)(?!(\\s*)\\[)",
+        end: "(,|/|\\)|]|{|=|\\r|\\n)",
+        contains: [
+          hljs.C_LINE_COMMENT_MODE,
+          hljs.COMMENT("/\\*", "\\*/", { contains: ["self"] }),
+          {
+            begin: "<<",
+          },
+          GENERICS,
+          FUNC_TYPE,
+          {
+            begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+            className: "keyword",
+          },
+          {
+            begin: IDENTIFIER,
+            className: "title.class",
+          },
+          {
+            begin: "\\|",
+          },
+          NUMBERS,
+          ...STRINGS,
+        ],
+      },
+      {
+        begin: ["(^|[^&])&", /\s*/, "\\b(" + KEYWORDS.join("|") + ")\\b"],
+        className: {
+          3: "keyword",
+        },
+      },
+      {
+        begin: ["(^|[^&])&", /\s*/, IDENTIFIER],
+        className: {
+          3: "title.class",
+        },
+      },
+      {
+        begin: IDENTIFIER + "(?=(\\s*)(<:))",
+        className: "title.class",
+      },
+      {
+        begin: IDENTIFIER + "(?=\\s*\\<[\\*\\<\\,\\-\\(\\)\\w\\s]*\\>)",
+        className: "title.class",
+      },
+      {
+        begin: "<<",
+      },
+      GENERICS,
+      {
+        begin: "\\b(" + KEYWORDS.join("|") + ")\\b",
+        relevance: 0,
+        className: "keyword",
+      },
+      {
+        className: "variable",
+        begin: IDENTIFIER,
+        relevance: 0,
+      },
     ],
   };
-});
+}
 
+hljs.registerLanguage("cangjie", cangjie);

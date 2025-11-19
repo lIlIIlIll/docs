@@ -45,8 +45,8 @@ additional-css = [
   "./theme/table-fullwidth.css",
 ]
 additional-js = [
-  "./theme/hljs-cangjie.js",
   "./theme/pagetoc.js",
   "./theme/elasticlunr.js",
   "./theme/fzf.umd.js",
+  "./theme/hljs-cangjie.js",
 ]
