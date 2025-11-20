@@ -80,7 +80,6 @@ html.light .hljs-emphasis {
 }
 
 html.light .hljs {
-  display: block;
   overflow-x: auto;
   background: #f1f3f4;
   color: #000;
