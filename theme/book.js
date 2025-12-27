@@ -182,11 +182,19 @@ function playground_text(playground, hidden = true) {
                 return !node.classList.contains('editable');
             })
             .forEach(function(block) {
-                hljs.highlightBlock(block);
+                if (hljs.highlightElement) {
+                    hljs.highlightElement(block);
+                } else {
+                    hljs.highlightBlock(block);
+                }
             });
     } else {
         code_nodes.forEach(function(block) {
-            hljs.highlightBlock(block);
+            if (hljs.highlightElement) {
+                hljs.highlightElement(block);
+            } else {
+                hljs.highlightBlock(block);
+            }
         });
     }
 
