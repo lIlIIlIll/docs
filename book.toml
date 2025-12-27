@@ -38,7 +38,7 @@ renderer = ["html"]
 default-theme = "latte"
 preferred-dark-theme = "macchiato"
 no-section-label = true
-google-analytics = "GTM-4MMLK76P"
+google-analytics = "G-T1KCW2TRHH"
 additional-css = [
   "./theme/pagetoc.css",
   "./theme/catppuccin-admonish.css",
