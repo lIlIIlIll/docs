@@ -83,6 +83,14 @@ jobs:
           echo "STD_PR_OUT_DIR=$GITHUB_WORKSPACE/book/pr/std" >> "$GITHUB_ENV"
           echo "STDX_PR_OUT_DIR=$GITHUB_WORKSPACE/book/pr/stdx" >> "$GITHUB_ENV"
 
+      - name: Restore PR book cache
+        uses: actions/cache@v4
+        with:
+          path: book/pr
+          key: book-pr-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            book-pr-${{ github.ref_name }}-
+
       - name: Clone cangjie_runtime (dev)
         run: |
           git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b dev ext
