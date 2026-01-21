@@ -15,13 +15,17 @@ on:
         type: boolean
         default: false
       std_branch:
-        description: "Branch/tag for cangjie_runtime (std)"
+        description: "Base branch/tag for PR cherry-pick (std)"
         type: string
         default: "dev"
       stdx_branch:
-        description: "Branch/tag for cangjie_stdx (stdx)"
+        description: "Base branch/tag for PR cherry-pick (stdx)"
         type: string
         default: "dev"
+      pr_id:
+        description: "PR ID for /pr/<id> output path"
+        type: string
+        default: ""
       std_prs:
         description: "Comma/space-separated PR numbers or commits to cherry-pick into std"
         type: string
@@ -54,6 +58,7 @@ jobs:
       FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_rebuild || vars.FORCE_REBUILD || 'false' }}
       STD_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.std_branch || vars.STD_BRANCH || 'dev' }}
       STDX_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.stdx_branch || vars.STDX_BRANCH || 'dev' }}
+      PR_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pr_id || '' }}
       STD_PRS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.std_prs || '' }}
       STDX_PRS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.stdx_prs || '' }}
 
@@ -68,20 +73,35 @@ jobs:
       - name: Resolve build options
         run: |
           set -euo pipefail
-          custom="false"
-          if [[ -n "${STD_PRS}" || -n "${STDX_PRS}" || "${STD_BRANCH}" != "dev" || "${STDX_BRANCH}" != "dev" ]]; then
-            custom="true"
+          pr_id="${PR_ID}"
+          build_pr="false"
+          if [[ -n "$pr_id" || -n "${STD_PRS}" || -n "${STDX_PRS}" ]]; then
+            build_pr="true"
+          fi
+          if [[ "$build_pr" == "true" && -z "$pr_id" ]]; then
+            echo "PR_ID is required when building PR docs." >&2
+            exit 1
+          fi
+          if [[ "$build_pr" == "true" && ! "$pr_id" =~ ^[0-9]+$ ]]; then
+            echo "PR_ID must be numeric (example: 123)." >&2
+            exit 1
           fi
           force="${FORCE_REBUILD}"
-          if [[ "$custom" == "true" ]]; then
+          if [[ "$build_pr" == "true" ]]; then
             force="true"
           fi
-          echo "CUSTOM_BUILD=$custom" >> "$GITHUB_ENV"
+          echo "BUILD_PR=$build_pr" >> "$GITHUB_ENV"
           echo "FORCE_REBUILD=$force" >> "$GITHUB_ENV"
-          echo "STD_OUT_DIR=$GITHUB_WORKSPACE/book/std" >> "$GITHUB_ENV"
-          echo "STDX_OUT_DIR=$GITHUB_WORKSPACE/book/stdx" >> "$GITHUB_ENV"
-          echo "STD_PR_OUT_DIR=$GITHUB_WORKSPACE/book/pr/std" >> "$GITHUB_ENV"
-          echo "STDX_PR_OUT_DIR=$GITHUB_WORKSPACE/book/pr/stdx" >> "$GITHUB_ENV"
+          echo "DEV_STD_OUT_DIR=$GITHUB_WORKSPACE/book/dev/std" >> "$GITHUB_ENV"
+          echo "DEV_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/dev/stdx" >> "$GITHUB_ENV"
+          echo "MAIN_STD_OUT_DIR=$GITHUB_WORKSPACE/book/main/std" >> "$GITHUB_ENV"
+          echo "MAIN_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/main/stdx" >> "$GITHUB_ENV"
+          if [[ "$build_pr" == "true" ]]; then
+            pr_root="$GITHUB_WORKSPACE/book/pr/$pr_id"
+            echo "PR_OUT_ROOT=$pr_root" >> "$GITHUB_ENV"
+            echo "PR_STD_OUT_DIR=$pr_root/std" >> "$GITHUB_ENV"
+            echo "PR_STDX_OUT_DIR=$pr_root/stdx" >> "$GITHUB_ENV"
+          fi
 
       - name: Restore PR book cache
         uses: actions/cache@v4
@@ -91,24 +111,61 @@ jobs:
           restore-keys: |
             book-pr-${{ github.ref_name }}-
 
+      - name: Prune old PR books
+        run: |
+          set -euo pipefail
+          pr_root="$GITHUB_WORKSPACE/book/pr"
+          if [[ ! -d "$pr_root" ]]; then
+            exit 0
+          fi
+          now=$(date +%s)
+          pruned="false"
+          for dir in "$pr_root"/*; do
+            [[ -d "$dir" ]] || continue
+            stamp="$dir/.stamp"
+            [[ -f "$stamp" ]] || continue
+            ts=$(tr -d ' \n' < "$stamp" || true)
+            if [[ "$ts" =~ ^[0-9]+$ ]]; then
+              age=$((now - ts))
+              if (( age > 604800 )); then
+                echo "Prune old PR book: $dir"
+                rm -rf "$dir"
+                pruned="true"
+              fi
+            fi
+          done
+          if [[ "$pruned" == "true" ]]; then
+            echo "FORCE_REBUILD=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Clone cangjie_runtime (dev)
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b dev ext
-          ls -R ext
+          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b dev ext_dev
+          ls -R ext_dev
 
       - name: Clone cangjie-stdx (dev)
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b dev ext_stdx
-          ls -R ext_stdx
+          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b dev ext_stdx_dev
+          ls -R ext_stdx_dev
 
-      - name: Clone cangjie_runtime (custom)
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Clone cangjie_runtime (main)
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b main ext_main
+          ls -R ext_main
+
+      - name: Clone cangjie-stdx (main)
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b main ext_stdx_main
+          ls -R ext_stdx_main
+
+      - name: Clone cangjie_runtime (pr base)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b "$STD_BRANCH" ext_pr
           ls -R ext_pr
 
-      - name: Clone cangjie-stdx (custom)
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Clone cangjie-stdx (pr base)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b "$STDX_BRANCH" ext_stdx_pr
           ls -R ext_stdx_pr
@@ -158,12 +215,18 @@ jobs:
         id: extsha
         run: |
           set -euo pipefail
-          RUNTIME_SHA=$(git -C ext rev-parse HEAD)
-          STDX_SHA=$(git -C ext_stdx rev-parse HEAD)
-          echo "runtime_sha=$RUNTIME_SHA" >> $GITHUB_OUTPUT
-          echo "stdx_sha=$STDX_SHA"       >> $GITHUB_OUTPUT
-          echo "Runtime: $RUNTIME_SHA"
-          echo "Stdx   : $STDX_SHA"
+          RUNTIME_DEV_SHA=$(git -C ext_dev rev-parse HEAD)
+          STDX_DEV_SHA=$(git -C ext_stdx_dev rev-parse HEAD)
+          RUNTIME_MAIN_SHA=$(git -C ext_main rev-parse HEAD)
+          STDX_MAIN_SHA=$(git -C ext_stdx_main rev-parse HEAD)
+          echo "runtime_dev_sha=$RUNTIME_DEV_SHA"   >> $GITHUB_OUTPUT
+          echo "stdx_dev_sha=$STDX_DEV_SHA"         >> $GITHUB_OUTPUT
+          echo "runtime_main_sha=$RUNTIME_MAIN_SHA" >> $GITHUB_OUTPUT
+          echo "stdx_main_sha=$STDX_MAIN_SHA"       >> $GITHUB_OUTPUT
+          echo "Runtime dev : $RUNTIME_DEV_SHA"
+          echo "Stdx dev    : $STDX_DEV_SHA"
+          echo "Runtime main: $RUNTIME_MAIN_SHA"
+          echo "Stdx main   : $STDX_MAIN_SHA"
 
       - name: Check cache by SHAs
         id: cachecheck
@@ -171,7 +234,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ext-build-cache
-          key: ext-sha-${{ steps.extsha.outputs.runtime_sha }}-${{ steps.extsha.outputs.stdx_sha }}
+          key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
 
       - name: Skip if no upstream changes
         if: steps.cachecheck.outputs.cache-hit == 'true'
@@ -179,29 +242,58 @@ jobs:
           echo "No upstream changes. Skipping build & deploy."
           exit 0
 
-      - name: Prepare std book
+      - name: Prepare std book (dev)
         run: |
           set -euxo pipefail
-          mkdir -p src/vendor/gitcode
-          rsync -a --delete ext/stdlib/doc/libs/ src/vendor/gitcode/
+          mkdir -p std_dev_book/src std_dev_book/theme std_dev_book/scripts
+          mkdir -p std_dev_book/src/vendor/gitcode
+          rsync -a --delete ext_dev/stdlib/doc/libs/ std_dev_book/src/vendor/gitcode/
 
-          cp -r src/vendor/gitcode/* src/
-          rm -r src/std_en
-          rm src/summary_cjnative_EN.md
-          mv -f src/summary_cjnative.md src/SUMMARY.md
+          cp -r std_dev_book/src/vendor/gitcode/* std_dev_book/src/
+          rm -rf std_dev_book/src/std_en
+          rm -f std_dev_book/src/summary_cjnative_EN.md
+          mv -f std_dev_book/src/summary_cjnative.md std_dev_book/src/SUMMARY.md
+          cp -r theme/* std_dev_book/theme/
+          cp scripts/* std_dev_book/scripts/
+          cp book.toml std_dev_book/book.toml
 
-      - name: Prepare stdx book (isolated build dir)
+      - name: Prepare stdx book (dev)
         run: |
           set -euxo pipefail
-          mkdir -p stdx_book/src stdx_book/theme stdx_book/scripts
-          rsync -a --delete ext_stdx/doc/* stdx_book/src/
-          test -f stdx_book/src/summary_cjnative.md && mv -f stdx_book/src/summary_cjnative.md stdx_book/src/SUMMARY.md
-          cp -r theme/* stdx_book/theme/
-          cp scripts/* stdx_book/scripts/
-          cp book.toml stdx_book/book.toml
+          mkdir -p stdx_dev_book/src stdx_dev_book/theme stdx_dev_book/scripts
+          rsync -a --delete ext_stdx_dev/doc/* stdx_dev_book/src/
+          test -f stdx_dev_book/src/summary_cjnative.md && mv -f stdx_dev_book/src/summary_cjnative.md stdx_dev_book/src/SUMMARY.md
+          cp -r theme/* stdx_dev_book/theme/
+          cp scripts/* stdx_dev_book/scripts/
+          cp book.toml stdx_dev_book/book.toml
 
-      - name: Prepare std book (custom)
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Prepare std book (main)
+        run: |
+          set -euxo pipefail
+          mkdir -p std_main_book/src std_main_book/theme std_main_book/scripts
+          mkdir -p std_main_book/src/vendor/gitcode
+          rsync -a --delete ext_main/stdlib/doc/libs/ std_main_book/src/vendor/gitcode/
+
+          cp -r std_main_book/src/vendor/gitcode/* std_main_book/src/
+          rm -rf std_main_book/src/std_en
+          rm -f std_main_book/src/summary_cjnative_EN.md
+          mv -f std_main_book/src/summary_cjnative.md std_main_book/src/SUMMARY.md
+          cp -r theme/* std_main_book/theme/
+          cp scripts/* std_main_book/scripts/
+          cp book.toml std_main_book/book.toml
+
+      - name: Prepare stdx book (main)
+        run: |
+          set -euxo pipefail
+          mkdir -p stdx_main_book/src stdx_main_book/theme stdx_main_book/scripts
+          rsync -a --delete ext_stdx_main/doc/* stdx_main_book/src/
+          test -f stdx_main_book/src/summary_cjnative.md && mv -f stdx_main_book/src/summary_cjnative.md stdx_main_book/src/SUMMARY.md
+          cp -r theme/* stdx_main_book/theme/
+          cp scripts/* stdx_main_book/scripts/
+          cp book.toml stdx_main_book/book.toml
+
+      - name: Prepare std book (pr)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p std_pr_book/src std_pr_book/theme std_pr_book/scripts
@@ -209,15 +301,15 @@ jobs:
           rsync -a --delete ext_pr/stdlib/doc/libs/ std_pr_book/src/vendor/gitcode/
 
           cp -r std_pr_book/src/vendor/gitcode/* std_pr_book/src/
-          rm -r std_pr_book/src/std_en
-          rm std_pr_book/src/summary_cjnative_EN.md
+          rm -rf std_pr_book/src/std_en
+          rm -f std_pr_book/src/summary_cjnative_EN.md
           mv -f std_pr_book/src/summary_cjnative.md std_pr_book/src/SUMMARY.md
           cp -r theme/* std_pr_book/theme/
           cp scripts/* std_pr_book/scripts/
           cp book.toml std_pr_book/book.toml
 
-      - name: Prepare stdx book (custom, isolated build dir)
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Prepare stdx book (pr)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p stdx_pr_book/src stdx_pr_book/theme stdx_pr_book/scripts
@@ -229,20 +321,16 @@ jobs:
 
       - name: Sanity check
         run: |
-          ls -la src | sed -n '1,200p'
-          test -f src/SUMMARY.md
-          sed -n '1,10p' src/SUMMARY.md
-
-          ls -la stdx_book/src | sed -n '1,80p'
-          echo "ls stdx_book/theme"
-          ls -la stdx_book/theme/*
-
-          echo "ls stdx_book/scripts"
-
-          ls -la stdx_book/scripts/*
-          test -f stdx_book/src/SUMMARY.md
-          sed -n '1,10p' stdx_book/book.toml
-          sed -n '1,10p' stdx_book/scripts/table.py
+          test -f std_dev_book/src/SUMMARY.md
+          test -f stdx_dev_book/src/SUMMARY.md
+          test -f std_main_book/src/SUMMARY.md
+          test -f stdx_main_book/src/SUMMARY.md
+          if [[ "${BUILD_PR}" == "true" ]]; then
+            test -f std_pr_book/src/SUMMARY.md
+            test -f stdx_pr_book/src/SUMMARY.md
+          fi
+          sed -n '1,10p' std_dev_book/book.toml
+          sed -n '1,10p' stdx_dev_book/scripts/table.py
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -311,61 +399,148 @@ jobs:
           echo "--- show book.toml (if any) ---"
           sed -n '1,120p' book.toml || true
 
-      - name: Build std mdBook
+      - name: Build std (dev)
         run: |
           set -euxo pipefail
-          mdbook-admonish install
-          BASE_TITLE="Cangjie Std API"
+          cd std_dev_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Std API (dev)"
           TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$STD_OUT_DIR"
-          echo "--- built dirs ---"
-          find "$GITHUB_WORKSPACE" -maxdepth 4 -type d -name book -print
-          echo "--- book/ listing ---"
-          ls -la "$STD_OUT_DIR"
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$DEV_STD_OUT_DIR"
+          test -f "$DEV_STD_OUT_DIR/index.html"
 
-      - name: Build cangjie-stdx into /book/stdx
+      - name: Build stdx (dev)
         run: |
           set -euxo pipefail
-          ls -al stdx_book/
-          cd stdx_book && mdbook-admonish install
-          BASE_TITLE="Cangjie Stdx API"  # 或者用 tomlq/yq 读 book.toml
+          cd stdx_dev_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Stdx API (dev)"
           TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$STDX_OUT_DIR"
-          test -f "$STDX_OUT_DIR/index.html"
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$DEV_STDX_OUT_DIR"
+          test -f "$DEV_STDX_OUT_DIR/index.html"
 
-      - name: Build std mdBook (custom)
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Build std (main)
+        run: |
+          set -euxo pipefail
+          cd std_main_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Std API (main)"
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$MAIN_STD_OUT_DIR"
+          test -f "$MAIN_STD_OUT_DIR/index.html"
+
+      - name: Build stdx (main)
+        run: |
+          set -euxo pipefail
+          cd stdx_main_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Stdx API (main)"
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$MAIN_STDX_OUT_DIR"
+          test -f "$MAIN_STDX_OUT_DIR/index.html"
+
+      - name: Build std (pr)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
           cd std_pr_book && mdbook-admonish install
-          BASE_TITLE="Cangjie Std API"
+          BASE_TITLE="Cangjie Std API (pr ${PR_ID})"
           TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$STD_PR_OUT_DIR"
-          test -f "$STD_PR_OUT_DIR/index.html"
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$PR_STD_OUT_DIR"
+          test -f "$PR_STD_OUT_DIR/index.html"
 
-      - name: Build cangjie-stdx (custom) into /book/pr/stdx
-        if: ${{ env.CUSTOM_BUILD == 'true' }}
+      - name: Build stdx (pr)
+        if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
           cd stdx_pr_book && mdbook-admonish install
-          BASE_TITLE="Cangjie Stdx API"  # 或者用 tomlq/yq 读 book.toml
+          BASE_TITLE="Cangjie Stdx API (pr ${PR_ID})"
           TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$STDX_PR_OUT_DIR"
-          test -f "$STDX_PR_OUT_DIR/index.html"
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$PR_STDX_OUT_DIR"
+          test -f "$PR_STDX_OUT_DIR/index.html"
+
+      - name: Write redirects and stamps
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/book"
+          cat > "$GITHUB_WORKSPACE/book/index.html" <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=./dev/">
+              <script>location.replace("./dev/");</script>
+              <title>Redirecting…</title>
+            </head>
+            <body>
+              <a href="./dev/">Go to dev docs</a>
+            </body>
+          </html>
+          EOF
+
+          mkdir -p "$GITHUB_WORKSPACE/book/dev" "$GITHUB_WORKSPACE/book/main"
+          cat > "$GITHUB_WORKSPACE/book/dev/index.html" <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=./std/">
+              <script>location.replace("./std/");</script>
+              <title>Redirecting…</title>
+            </head>
+            <body>
+              <a href="./std/">Go to std docs</a>
+            </body>
+          </html>
+          EOF
+
+          cat > "$GITHUB_WORKSPACE/book/main/index.html" <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=./std/">
+              <script>location.replace("./std/");</script>
+              <title>Redirecting…</title>
+            </head>
+            <body>
+              <a href="./std/">Go to std docs</a>
+            </body>
+          </html>
+          EOF
+
+          if [[ "${BUILD_PR}" == "true" ]]; then
+          mkdir -p "$PR_OUT_ROOT"
+          cat > "$PR_OUT_ROOT/index.html" <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=./std/">
+              <script>location.replace("./std/");</script>
+              <title>Redirecting…</title>
+            </head>
+            <body>
+              <a href="./std/">Go to std docs</a>
+            </body>
+          </html>
+          EOF
+          date +%s > "$PR_OUT_ROOT/.stamp"
+          fi
 
       - name: Assert book exists
         run: |
           set -euxo pipefail
           test -d "$GITHUB_WORKSPACE/book"
-          test -f "$STD_OUT_DIR/index.html" || (echo "index.html missing; build likely ran in wrong dir" && exit 2)
-          grep -nE 'pagetoc\.(js|css)' "$STD_OUT_DIR/index.html" || echo '未引入 pagetoc 资源'
-          find book -path '*/theme/pagetoc.*' -print || echo 'book/std/theme 下没找到 pagetoc.*'
-          grep -nE 'class="pagetoc|id="pagetoc' "$STD_OUT_DIR/index.html" || echo '页面里没有 pagetoc 容器（JS 可能没运行）'
-          if [[ "${CUSTOM_BUILD}" == "true" ]]; then
-            test -f "$STD_PR_OUT_DIR/index.html" || (echo "pr std index.html missing" && exit 2)
-            test -f "$STDX_PR_OUT_DIR/index.html" || (echo "pr stdx index.html missing" && exit 2)
+          test -f "$DEV_STD_OUT_DIR/index.html" || (echo "dev std index.html missing" && exit 2)
+          test -f "$DEV_STDX_OUT_DIR/index.html" || (echo "dev stdx index.html missing" && exit 2)
+          test -f "$MAIN_STD_OUT_DIR/index.html" || (echo "main std index.html missing" && exit 2)
+          test -f "$MAIN_STDX_OUT_DIR/index.html" || (echo "main stdx index.html missing" && exit 2)
+          grep -nE 'pagetoc\.(js|css)' "$DEV_STD_OUT_DIR/index.html" || echo '未引入 pagetoc 资源'
+          find book -path '*/theme/pagetoc.*' -print || echo 'theme/pagetoc.* missing'
+          grep -nE 'class="pagetoc|id="pagetoc' "$DEV_STD_OUT_DIR/index.html" || echo '页面里没有 pagetoc 容器（JS 可能没运行）'
+          if [[ "${BUILD_PR}" == "true" ]]; then
+            test -f "$PR_STD_OUT_DIR/index.html" || (echo "pr std index.html missing" && exit 2)
+            test -f "$PR_STDX_OUT_DIR/index.html" || (echo "pr stdx index.html missing" && exit 2)
+            test -f "$PR_OUT_ROOT/.stamp" || (echo "pr stamp missing" && exit 2)
           fi
-          find book -maxdepth 4 -type f -name 'toc.js' -print
+          find book -maxdepth 5 -type f -name 'toc.js' -print
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
