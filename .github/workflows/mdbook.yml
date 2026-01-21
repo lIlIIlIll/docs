@@ -366,7 +366,14 @@ jobs:
           set -euxo pipefail
           mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
           mkdir -p std_release_book/src/vendor/gitcode
-          rsync -a --delete ext_release/stdlib/doc/libs/ std_release_book/src/vendor/gitcode/
+          if [[ -d ext_release/stdlib/doc/libs ]]; then
+            rsync -a --delete ext_release/stdlib/doc/libs/ std_release_book/src/vendor/gitcode/
+          elif [[ -d ext_release/stdlib/doc ]]; then
+            rsync -a --delete ext_release/stdlib/doc/ std_release_book/src/vendor/gitcode/
+          else
+            echo "stdlib doc not found in ext_release" >&2
+            exit 1
+          fi
 
           cp -r std_release_book/src/vendor/gitcode/* std_release_book/src/
           rm -rf std_release_book/src/std_en
