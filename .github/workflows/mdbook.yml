@@ -87,11 +87,13 @@ jobs:
             exit 1
           fi
           force="${FORCE_REBUILD}"
+          force_deploy="false"
           if [[ "$build_pr" == "true" ]]; then
-            force="true"
+            force_deploy="true"
           fi
           echo "BUILD_PR=$build_pr" >> "$GITHUB_ENV"
           echo "FORCE_REBUILD=$force" >> "$GITHUB_ENV"
+          echo "FORCE_DEPLOY=$force_deploy" >> "$GITHUB_ENV"
           echo "DEV_STD_OUT_DIR=$GITHUB_WORKSPACE/book/dev/std" >> "$GITHUB_ENV"
           echo "DEV_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/dev/stdx" >> "$GITHUB_ENV"
           echo "MAIN_STD_OUT_DIR=$GITHUB_WORKSPACE/book/main/std" >> "$GITHUB_ENV"
@@ -137,7 +139,7 @@ jobs:
             fi
           done
           if [[ "$pruned" == "true" ]]; then
-            echo "FORCE_REBUILD=true" >> "$GITHUB_ENV"
+            echo "FORCE_DEPLOY=true" >> "$GITHUB_ENV"
           fi
 
       - name: Clone cangjie_runtime (dev)
@@ -255,12 +257,57 @@ jobs:
           key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
 
       - name: Skip if no upstream changes
-        if: steps.cachecheck.outputs.cache-hit == 'true'
+        if: steps.cachecheck.outputs.cache-hit == 'true' && env.BUILD_PR != 'true' && env.FORCE_DEPLOY != 'true'
         run: |
           echo "No upstream changes. Skipping build & deploy."
           exit 0
 
+      - name: Restore dev book output cache
+        id: cache_book_dev
+        uses: actions/cache@v4
+        with:
+          path: book/dev
+          key: book-dev-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}
+
+      - name: Restore main book output cache
+        id: cache_book_main
+        uses: actions/cache@v4
+        with:
+          path: book/main
+          key: book-main-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
+
+      - name: Restore release book output cache
+        id: cache_book_release
+        uses: actions/cache@v4
+        with:
+          path: book/release/1.0
+          key: book-release-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
+
+      - name: Decide branch builds
+        run: |
+          set -euo pipefail
+          build_dev="true"
+          build_main="true"
+          build_release="true"
+          if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_DEV_HIT}" == "true" ]]; then
+            build_dev="false"
+          fi
+          if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_MAIN_HIT}" == "true" ]]; then
+            build_main="false"
+          fi
+          if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_RELEASE_HIT}" == "true" ]]; then
+            build_release="false"
+          fi
+          echo "BUILD_DEV=$build_dev" >> "$GITHUB_ENV"
+          echo "BUILD_MAIN=$build_main" >> "$GITHUB_ENV"
+          echo "BUILD_RELEASE=$build_release" >> "$GITHUB_ENV"
+        env:
+          CACHE_DEV_HIT: ${{ steps.cache_book_dev.outputs.cache-hit }}
+          CACHE_MAIN_HIT: ${{ steps.cache_book_main.outputs.cache-hit }}
+          CACHE_RELEASE_HIT: ${{ steps.cache_book_release.outputs.cache-hit }}
+
       - name: Prepare std book (dev)
+        if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p std_dev_book/src std_dev_book/theme std_dev_book/scripts
@@ -276,6 +323,7 @@ jobs:
           cp book.toml std_dev_book/book.toml
 
       - name: Prepare stdx book (dev)
+        if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p stdx_dev_book/src stdx_dev_book/theme stdx_dev_book/scripts
@@ -286,6 +334,7 @@ jobs:
           cp book.toml stdx_dev_book/book.toml
 
       - name: Prepare std book (main)
+        if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p std_main_book/src std_main_book/theme std_main_book/scripts
@@ -301,6 +350,7 @@ jobs:
           cp book.toml std_main_book/book.toml
 
       - name: Prepare stdx book (main)
+        if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p stdx_main_book/src stdx_main_book/theme stdx_main_book/scripts
@@ -311,6 +361,7 @@ jobs:
           cp book.toml stdx_main_book/book.toml
 
       - name: Prepare std book (release/1.0)
+        if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
@@ -326,6 +377,7 @@ jobs:
           cp book.toml std_release_book/book.toml
 
       - name: Prepare stdx book (release/1.0)
+        if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p stdx_release_book/src stdx_release_book/theme stdx_release_book/scripts
@@ -364,18 +416,26 @@ jobs:
 
       - name: Sanity check
         run: |
-          test -f std_dev_book/src/SUMMARY.md
-          test -f stdx_dev_book/src/SUMMARY.md
-          test -f std_main_book/src/SUMMARY.md
-          test -f stdx_main_book/src/SUMMARY.md
-          test -f std_release_book/src/SUMMARY.md
-          test -f stdx_release_book/src/SUMMARY.md
+          if [[ "${BUILD_DEV}" == "true" ]]; then
+            test -f std_dev_book/src/SUMMARY.md
+            test -f stdx_dev_book/src/SUMMARY.md
+          fi
+          if [[ "${BUILD_MAIN}" == "true" ]]; then
+            test -f std_main_book/src/SUMMARY.md
+            test -f stdx_main_book/src/SUMMARY.md
+          fi
+          if [[ "${BUILD_RELEASE}" == "true" ]]; then
+            test -f std_release_book/src/SUMMARY.md
+            test -f stdx_release_book/src/SUMMARY.md
+          fi
           if [[ "${BUILD_PR}" == "true" ]]; then
             test -f std_pr_book/src/SUMMARY.md
             test -f stdx_pr_book/src/SUMMARY.md
           fi
-          sed -n '1,10p' std_dev_book/book.toml
-          sed -n '1,10p' stdx_dev_book/scripts/table.py
+          if [[ "${BUILD_DEV}" == "true" ]]; then
+            sed -n '1,10p' std_dev_book/book.toml
+            sed -n '1,10p' stdx_dev_book/scripts/table.py
+          fi
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -445,6 +505,7 @@ jobs:
           sed -n '1,120p' book.toml || true
 
       - name: Build std (dev)
+        if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
           cd std_dev_book && mdbook-admonish install
@@ -454,6 +515,7 @@ jobs:
           test -f "$DEV_STD_OUT_DIR/index.html"
 
       - name: Build stdx (dev)
+        if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
           cd stdx_dev_book && mdbook-admonish install
@@ -463,6 +525,7 @@ jobs:
           test -f "$DEV_STDX_OUT_DIR/index.html"
 
       - name: Build std (main)
+        if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
           cd std_main_book && mdbook-admonish install
@@ -472,6 +535,7 @@ jobs:
           test -f "$MAIN_STD_OUT_DIR/index.html"
 
       - name: Build stdx (main)
+        if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
           cd stdx_main_book && mdbook-admonish install
@@ -481,6 +545,7 @@ jobs:
           test -f "$MAIN_STDX_OUT_DIR/index.html"
 
       - name: Build std (release/1.0)
+        if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
           cd std_release_book && mdbook-admonish install
@@ -490,6 +555,7 @@ jobs:
           test -f "$RELEASE_STD_OUT_DIR/index.html"
 
       - name: Build stdx (release/1.0)
+        if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
           cd stdx_release_book && mdbook-admonish install
