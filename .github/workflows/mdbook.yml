@@ -366,14 +366,27 @@ jobs:
           set -euxo pipefail
           mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
           mkdir -p std_release_book/src/vendor/gitcode
+          doc_src=""
           if [[ -d ext_release/stdlib/doc/libs ]]; then
-            rsync -a --delete ext_release/stdlib/doc/libs/ std_release_book/src/vendor/gitcode/
+            doc_src="ext_release/stdlib/doc/libs"
           elif [[ -d ext_release/stdlib/doc ]]; then
-            rsync -a --delete ext_release/stdlib/doc/ std_release_book/src/vendor/gitcode/
+            doc_src="ext_release/stdlib/doc"
           else
+            doc_src="$(find ext_release -type f -name summary_cjnative.md -print -quit || true)"
+            if [[ -n "$doc_src" ]]; then
+              doc_src="$(dirname "$doc_src")"
+            else
+              doc_src="$(find ext_release -type f -name SUMMARY.md -print -quit || true)"
+              if [[ -n "$doc_src" ]]; then
+                doc_src="$(dirname "$doc_src")"
+              fi
+            fi
+          fi
+          if [[ -z "$doc_src" ]]; then
             echo "stdlib doc not found in ext_release" >&2
             exit 1
           fi
+          rsync -a --delete "$doc_src"/ std_release_book/src/vendor/gitcode/
 
           cp -r std_release_book/src/vendor/gitcode/* std_release_book/src/
           rm -rf std_release_book/src/std_en
@@ -388,7 +401,25 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p stdx_release_book/src stdx_release_book/theme stdx_release_book/scripts
-          rsync -a --delete ext_stdx_release/doc/* stdx_release_book/src/
+          doc_src=""
+          if [[ -d ext_stdx_release/doc ]]; then
+            doc_src="ext_stdx_release/doc"
+          else
+            doc_src="$(find ext_stdx_release -type f -name summary_cjnative.md -print -quit || true)"
+            if [[ -n "$doc_src" ]]; then
+              doc_src="$(dirname "$doc_src")"
+            else
+              doc_src="$(find ext_stdx_release -type f -name SUMMARY.md -print -quit || true)"
+              if [[ -n "$doc_src" ]]; then
+                doc_src="$(dirname "$doc_src")"
+              fi
+            fi
+          fi
+          if [[ -z "$doc_src" ]]; then
+            echo "stdx doc not found in ext_stdx_release" >&2
+            exit 1
+          fi
+          rsync -a --delete "$doc_src"/ stdx_release_book/src/
           test -f stdx_release_book/src/summary_cjnative.md && mv -f stdx_release_book/src/summary_cjnative.md stdx_release_book/src/SUMMARY.md
           cp -r theme/* stdx_release_book/theme/
           cp scripts/* stdx_release_book/scripts/
