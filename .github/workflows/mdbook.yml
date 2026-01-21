@@ -464,12 +464,12 @@ jobs:
           <html lang="en">
             <head>
               <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./dev/">
-              <script>location.replace("./dev/");</script>
+              <meta http-equiv="refresh" content="0; url=./dev/std/">
+              <script>location.replace("./dev/std/");</script>
               <title>Redirecting…</title>
             </head>
             <body>
-              <a href="./dev/">Go to dev docs</a>
+              <a href="./dev/std/">Go to dev docs</a>
             </body>
           </html>
           EOF
