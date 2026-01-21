@@ -96,6 +96,8 @@ jobs:
           echo "DEV_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/dev/stdx" >> "$GITHUB_ENV"
           echo "MAIN_STD_OUT_DIR=$GITHUB_WORKSPACE/book/main/std" >> "$GITHUB_ENV"
           echo "MAIN_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/main/stdx" >> "$GITHUB_ENV"
+          echo "RELEASE_STD_OUT_DIR=$GITHUB_WORKSPACE/book/release/1.0/std" >> "$GITHUB_ENV"
+          echo "RELEASE_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/release/1.0/stdx" >> "$GITHUB_ENV"
           if [[ "$build_pr" == "true" ]]; then
             pr_root="$GITHUB_WORKSPACE/book/pr/$pr_id"
             echo "PR_OUT_ROOT=$pr_root" >> "$GITHUB_ENV"
@@ -158,6 +160,16 @@ jobs:
           git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b main ext_stdx_main
           ls -R ext_stdx_main
 
+      - name: Clone cangjie_runtime (release/1.0)
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b release/1.0 ext_release
+          ls -R ext_release
+
+      - name: Clone cangjie-stdx (release/1.0)
+        run: |
+          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b release/1.0 ext_stdx_release
+          ls -R ext_stdx_release
+
       - name: Clone cangjie_runtime (pr base)
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
@@ -219,14 +231,20 @@ jobs:
           STDX_DEV_SHA=$(git -C ext_stdx_dev rev-parse HEAD)
           RUNTIME_MAIN_SHA=$(git -C ext_main rev-parse HEAD)
           STDX_MAIN_SHA=$(git -C ext_stdx_main rev-parse HEAD)
+          RUNTIME_RELEASE_SHA=$(git -C ext_release rev-parse HEAD)
+          STDX_RELEASE_SHA=$(git -C ext_stdx_release rev-parse HEAD)
           echo "runtime_dev_sha=$RUNTIME_DEV_SHA"   >> $GITHUB_OUTPUT
           echo "stdx_dev_sha=$STDX_DEV_SHA"         >> $GITHUB_OUTPUT
           echo "runtime_main_sha=$RUNTIME_MAIN_SHA" >> $GITHUB_OUTPUT
           echo "stdx_main_sha=$STDX_MAIN_SHA"       >> $GITHUB_OUTPUT
+          echo "runtime_release_sha=$RUNTIME_RELEASE_SHA" >> $GITHUB_OUTPUT
+          echo "stdx_release_sha=$STDX_RELEASE_SHA"       >> $GITHUB_OUTPUT
           echo "Runtime dev : $RUNTIME_DEV_SHA"
           echo "Stdx dev    : $STDX_DEV_SHA"
           echo "Runtime main: $RUNTIME_MAIN_SHA"
           echo "Stdx main   : $STDX_MAIN_SHA"
+          echo "Runtime rel : $RUNTIME_RELEASE_SHA"
+          echo "Stdx rel    : $STDX_RELEASE_SHA"
 
       - name: Check cache by SHAs
         id: cachecheck
@@ -234,7 +252,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ext-build-cache
-          key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
+          key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
 
       - name: Skip if no upstream changes
         if: steps.cachecheck.outputs.cache-hit == 'true'
@@ -292,6 +310,31 @@ jobs:
           cp scripts/* stdx_main_book/scripts/
           cp book.toml stdx_main_book/book.toml
 
+      - name: Prepare std book (release/1.0)
+        run: |
+          set -euxo pipefail
+          mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
+          mkdir -p std_release_book/src/vendor/gitcode
+          rsync -a --delete ext_release/stdlib/doc/libs/ std_release_book/src/vendor/gitcode/
+
+          cp -r std_release_book/src/vendor/gitcode/* std_release_book/src/
+          rm -rf std_release_book/src/std_en
+          rm -f std_release_book/src/summary_cjnative_EN.md
+          mv -f std_release_book/src/summary_cjnative.md std_release_book/src/SUMMARY.md
+          cp -r theme/* std_release_book/theme/
+          cp scripts/* std_release_book/scripts/
+          cp book.toml std_release_book/book.toml
+
+      - name: Prepare stdx book (release/1.0)
+        run: |
+          set -euxo pipefail
+          mkdir -p stdx_release_book/src stdx_release_book/theme stdx_release_book/scripts
+          rsync -a --delete ext_stdx_release/doc/* stdx_release_book/src/
+          test -f stdx_release_book/src/summary_cjnative.md && mv -f stdx_release_book/src/summary_cjnative.md stdx_release_book/src/SUMMARY.md
+          cp -r theme/* stdx_release_book/theme/
+          cp scripts/* stdx_release_book/scripts/
+          cp book.toml stdx_release_book/book.toml
+
       - name: Prepare std book (pr)
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
@@ -325,6 +368,8 @@ jobs:
           test -f stdx_dev_book/src/SUMMARY.md
           test -f std_main_book/src/SUMMARY.md
           test -f stdx_main_book/src/SUMMARY.md
+          test -f std_release_book/src/SUMMARY.md
+          test -f stdx_release_book/src/SUMMARY.md
           if [[ "${BUILD_PR}" == "true" ]]; then
             test -f std_pr_book/src/SUMMARY.md
             test -f stdx_pr_book/src/SUMMARY.md
@@ -435,6 +480,24 @@ jobs:
           MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$MAIN_STDX_OUT_DIR"
           test -f "$MAIN_STDX_OUT_DIR/index.html"
 
+      - name: Build std (release/1.0)
+        run: |
+          set -euxo pipefail
+          cd std_release_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Std API (release/1.0)"
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$RELEASE_STD_OUT_DIR"
+          test -f "$RELEASE_STD_OUT_DIR/index.html"
+
+      - name: Build stdx (release/1.0)
+        run: |
+          set -euxo pipefail
+          cd stdx_release_book && mdbook-admonish install
+          BASE_TITLE="Cangjie Stdx API (release/1.0)"
+          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
+          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$RELEASE_STDX_OUT_DIR"
+          test -f "$RELEASE_STDX_OUT_DIR/index.html"
+
       - name: Build std (pr)
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
@@ -505,6 +568,22 @@ jobs:
           </html>
           EOF
 
+          mkdir -p "$GITHUB_WORKSPACE/book/release/1.0"
+          cat > "$GITHUB_WORKSPACE/book/release/1.0/index.html" <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=./std/">
+              <script>location.replace("./std/");</script>
+              <title>Redirecting…</title>
+            </head>
+            <body>
+              <a href="./std/">Go to std docs</a>
+            </body>
+          </html>
+          EOF
+
           if [[ "${BUILD_PR}" == "true" ]]; then
           mkdir -p "$PR_OUT_ROOT"
           cat > "$PR_OUT_ROOT/index.html" <<'EOF'
@@ -532,6 +611,8 @@ jobs:
           test -f "$DEV_STDX_OUT_DIR/index.html" || (echo "dev stdx index.html missing" && exit 2)
           test -f "$MAIN_STD_OUT_DIR/index.html" || (echo "main std index.html missing" && exit 2)
           test -f "$MAIN_STDX_OUT_DIR/index.html" || (echo "main stdx index.html missing" && exit 2)
+          test -f "$RELEASE_STD_OUT_DIR/index.html" || (echo "release std index.html missing" && exit 2)
+          test -f "$RELEASE_STDX_OUT_DIR/index.html" || (echo "release stdx index.html missing" && exit 2)
           grep -nE 'pagetoc\.(js|css)' "$DEV_STD_OUT_DIR/index.html" || echo '未引入 pagetoc 资源'
           find book -path '*/theme/pagetoc.*' -print || echo 'theme/pagetoc.* missing'
           grep -nE 'class="pagetoc|id="pagetoc' "$DEV_STD_OUT_DIR/index.html" || echo '页面里没有 pagetoc 容器（JS 可能没运行）'
