@@ -322,6 +322,10 @@ aria-label="Show hidden lines"></button>';
         { re: /^(example|examples)(?:\s*[:\uff1a])?/i, label: 'Example' },
         { re: /^(\u793a\u4f8b|\u4f8b\u5b50|\u4f8b)(?:\s*[:\uff1a])?/, label: '\u793a\u4f8b' },
     ];
+    const outputPatterns = [
+        { re: /^(output|outputs|result|results)(?:\s*[:\uff1a])?/i },
+        { re: /^(\u8f93\u51fa|\u8fd0\u884c\u7ed3\u679c|\u53ef\u80fd\u7684\u8fd0\u884c\u7ed3\u679c|\u8fd0\u884c\u7ed3\u679c\u5982\u4e0b|\u53ef\u80fd\u51fa\u73b0\u7684\u8fd0\u884c\u7ed3\u679c)(?:\s*[:\uff1a])?/ },
+    ];
 
     function getSummary(text, defaultLabel) {
         const trimmed = text.replace(/[:\uff1a]\s*$/, '').trim();
@@ -339,6 +343,15 @@ aria-label="Show hidden lines"></button>';
             }
         }
         return null;
+    }
+
+    function isOutputLabel(text) {
+        for (const item of outputPatterns) {
+            if (item.re.test(text)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function nextMeaningfulSibling(node) {
@@ -380,6 +393,21 @@ aria-label="Show hidden lines"></button>';
             return;
         }
 
+        let outputLabel = null;
+        const outputBlocks = [];
+        if (next && next.tagName && next.tagName.toLowerCase() === 'p') {
+            const outputText = next.textContent.trim();
+            if (outputText && isOutputLabel(outputText)) {
+                outputLabel = next;
+                outputLabel.classList.add('example-fold-output-label');
+                next = nextMeaningfulSibling(next);
+                while (next && next.tagName && next.tagName.toLowerCase() === 'pre') {
+                    outputBlocks.push(next);
+                    next = nextMeaningfulSibling(next);
+                }
+            }
+        }
+
         const details = document.createElement('details');
         details.className = 'example-fold';
 
@@ -390,6 +418,12 @@ aria-label="Show hidden lines"></button>';
         const body = document.createElement('div');
         body.className = 'example-fold-body';
         blocks.forEach(function(block) {
+            body.appendChild(block);
+        });
+        if (outputLabel) {
+            body.appendChild(outputLabel);
+        }
+        outputBlocks.forEach(function(block) {
             body.appendChild(block);
         });
         details.appendChild(body);
