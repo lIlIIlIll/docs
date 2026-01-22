@@ -142,99 +142,28 @@ jobs:
             echo "FORCE_DEPLOY=true" >> "$GITHUB_ENV"
           fi
 
-      - name: Clone cangjie_runtime (dev)
+      - name: Clone cangjie_runtime
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b dev ext_dev
-          ls -R ext_dev
+          git clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime
+          git -C ext_runtime fetch --prune --tags origin dev main release/1.0 "$STD_BRANCH"
+          ls -R ext_runtime
 
-      - name: Clone cangjie-stdx (dev)
+      - name: Clone cangjie-stdx
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b dev ext_stdx_dev
-          ls -R ext_stdx_dev
-
-      - name: Clone cangjie_runtime (main)
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b main ext_main
-          ls -R ext_main
-
-      - name: Clone cangjie-stdx (main)
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b main ext_stdx_main
-          ls -R ext_stdx_main
-
-      - name: Clone cangjie_runtime (release/1.0)
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b release/1.0 ext_release
-          ls -R ext_release
-
-      - name: Clone cangjie-stdx (release/1.0)
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b release/1.0 ext_stdx_release
-          ls -R ext_stdx_release
-
-      - name: Clone cangjie_runtime (pr base)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git -b "$STD_BRANCH" ext_pr
-          ls -R ext_pr
-
-      - name: Clone cangjie-stdx (pr base)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git -b "$STDX_BRANCH" ext_stdx_pr
-          ls -R ext_stdx_pr
-
-      - name: Cherry-pick PRs (custom)
-        if: ${{ env.STD_PRS != '' || env.STDX_PRS != '' }}
-        run: |
-          set -euo pipefail
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-
-          cherry_pick_prs() {
-            local repo_dir="$1"
-            local prs="$2"
-            if [[ -z "$prs" ]]; then
-              return 0
-            fi
-
-            echo "Cherry-picking into $repo_dir: $prs"
-            for pr in $(echo "$prs" | tr ',' ' '); do
-              pr="${pr//[[:space:]]/}"
-              [[ -z "$pr" ]] && continue
-
-              if [[ "$pr" =~ ^[0-9]+$ ]]; then
-                local ref=""
-                for cand in "refs/pull/$pr/head" "pull/$pr/head" "refs/merge-requests/$pr/head"; do
-                  if git -C "$repo_dir" fetch origin "$cand":pr-"$pr"; then
-                    ref="pr-$pr"
-                    break
-                  fi
-                done
-                if [[ -z "$ref" ]]; then
-                  echo "Failed to fetch PR $pr for $repo_dir" >&2
-                  exit 1
-                fi
-                git -C "$repo_dir" cherry-pick "$ref"
-              else
-                git -C "$repo_dir" cherry-pick "$pr"
-              fi
-            done
-          }
-
-          cherry_pick_prs ext_pr "$STD_PRS"
-          cherry_pick_prs ext_stdx_pr "$STDX_PRS"
+          git clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx
+          git -C ext_stdx fetch --prune --tags origin dev main release/1.0 "$STDX_BRANCH"
+          ls -R ext_stdx
 
       - name: Get ext SHAs
         id: extsha
         run: |
           set -euo pipefail
-          RUNTIME_DEV_SHA=$(git -C ext_dev rev-parse HEAD)
-          STDX_DEV_SHA=$(git -C ext_stdx_dev rev-parse HEAD)
-          RUNTIME_MAIN_SHA=$(git -C ext_main rev-parse HEAD)
-          STDX_MAIN_SHA=$(git -C ext_stdx_main rev-parse HEAD)
-          RUNTIME_RELEASE_SHA=$(git -C ext_release rev-parse HEAD)
-          STDX_RELEASE_SHA=$(git -C ext_stdx_release rev-parse HEAD)
+          RUNTIME_DEV_SHA=$(git -C ext_runtime rev-parse origin/dev)
+          STDX_DEV_SHA=$(git -C ext_stdx rev-parse origin/dev)
+          RUNTIME_MAIN_SHA=$(git -C ext_runtime rev-parse origin/main)
+          STDX_MAIN_SHA=$(git -C ext_stdx rev-parse origin/main)
+          RUNTIME_RELEASE_SHA=$(git -C ext_runtime rev-parse origin/release/1.0)
+          STDX_RELEASE_SHA=$(git -C ext_stdx rev-parse origin/release/1.0)
           echo "runtime_dev_sha=$RUNTIME_DEV_SHA"   >> $GITHUB_OUTPUT
           echo "stdx_dev_sha=$STDX_DEV_SHA"         >> $GITHUB_OUTPUT
           echo "runtime_main_sha=$RUNTIME_MAIN_SHA" >> $GITHUB_OUTPUT
@@ -312,7 +241,8 @@ jobs:
           set -euxo pipefail
           mkdir -p std_dev_book/src std_dev_book/theme std_dev_book/scripts
           mkdir -p std_dev_book/src/vendor/gitcode
-          rsync -a --delete ext_dev/stdlib/doc/libs/ std_dev_book/src/vendor/gitcode/
+          git -C ext_runtime checkout --detach origin/dev
+          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_dev_book/src/vendor/gitcode/
 
           cp -r std_dev_book/src/vendor/gitcode/* std_dev_book/src/
           rm -rf std_dev_book/src/std_en
@@ -327,7 +257,8 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p stdx_dev_book/src stdx_dev_book/theme stdx_dev_book/scripts
-          rsync -a --delete ext_stdx_dev/doc/* stdx_dev_book/src/
+          git -C ext_stdx checkout --detach origin/dev
+          rsync -a --delete ext_stdx/doc/* stdx_dev_book/src/
           test -f stdx_dev_book/src/summary_cjnative.md && mv -f stdx_dev_book/src/summary_cjnative.md stdx_dev_book/src/SUMMARY.md
           cp -r theme/* stdx_dev_book/theme/
           cp scripts/* stdx_dev_book/scripts/
@@ -339,7 +270,8 @@ jobs:
           set -euxo pipefail
           mkdir -p std_main_book/src std_main_book/theme std_main_book/scripts
           mkdir -p std_main_book/src/vendor/gitcode
-          rsync -a --delete ext_main/stdlib/doc/libs/ std_main_book/src/vendor/gitcode/
+          git -C ext_runtime checkout --detach origin/main
+          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_main_book/src/vendor/gitcode/
 
           cp -r std_main_book/src/vendor/gitcode/* std_main_book/src/
           rm -rf std_main_book/src/std_en
@@ -354,7 +286,8 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p stdx_main_book/src stdx_main_book/theme stdx_main_book/scripts
-          rsync -a --delete ext_stdx_main/doc/* stdx_main_book/src/
+          git -C ext_stdx checkout --detach origin/main
+          rsync -a --delete ext_stdx/doc/* stdx_main_book/src/
           test -f stdx_main_book/src/summary_cjnative.md && mv -f stdx_main_book/src/summary_cjnative.md stdx_main_book/src/SUMMARY.md
           cp -r theme/* stdx_main_book/theme/
           cp scripts/* stdx_main_book/scripts/
@@ -367,23 +300,24 @@ jobs:
           mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
           mkdir -p std_release_book/src/vendor/gitcode
           doc_src=""
-          if [[ -d ext_release/stdlib/doc/libs ]]; then
-            doc_src="ext_release/stdlib/doc/libs"
-          elif [[ -d ext_release/stdlib/doc ]]; then
-            doc_src="ext_release/stdlib/doc"
+          git -C ext_runtime checkout --detach origin/release/1.0
+          if [[ -d ext_runtime/stdlib/doc/libs ]]; then
+            doc_src="ext_runtime/stdlib/doc/libs"
+          elif [[ -d ext_runtime/stdlib/doc ]]; then
+            doc_src="ext_runtime/stdlib/doc"
           else
-            doc_src="$(find ext_release -type f -name summary_cjnative.md -print -quit || true)"
+            doc_src="$(find ext_runtime -type f -name summary_cjnative.md -print -quit || true)"
             if [[ -n "$doc_src" ]]; then
               doc_src="$(dirname "$doc_src")"
             else
-              doc_src="$(find ext_release -type f -name SUMMARY.md -print -quit || true)"
+              doc_src="$(find ext_runtime -type f -name SUMMARY.md -print -quit || true)"
               if [[ -n "$doc_src" ]]; then
                 doc_src="$(dirname "$doc_src")"
               fi
             fi
           fi
           if [[ -z "$doc_src" ]]; then
-            echo "stdlib doc not found in ext_release" >&2
+            echo "stdlib doc not found in ext_runtime" >&2
             exit 1
           fi
           rsync -a --delete "$doc_src"/ std_release_book/src/vendor/gitcode/
@@ -402,21 +336,22 @@ jobs:
           set -euxo pipefail
           mkdir -p stdx_release_book/src stdx_release_book/theme stdx_release_book/scripts
           doc_src=""
-          if [[ -d ext_stdx_release/doc ]]; then
-            doc_src="ext_stdx_release/doc"
+          git -C ext_stdx checkout --detach origin/release/1.0
+          if [[ -d ext_stdx/doc ]]; then
+            doc_src="ext_stdx/doc"
           else
-            doc_src="$(find ext_stdx_release -type f -name summary_cjnative.md -print -quit || true)"
+            doc_src="$(find ext_stdx -type f -name summary_cjnative.md -print -quit || true)"
             if [[ -n "$doc_src" ]]; then
               doc_src="$(dirname "$doc_src")"
             else
-              doc_src="$(find ext_stdx_release -type f -name SUMMARY.md -print -quit || true)"
+              doc_src="$(find ext_stdx -type f -name SUMMARY.md -print -quit || true)"
               if [[ -n "$doc_src" ]]; then
                 doc_src="$(dirname "$doc_src")"
               fi
             fi
           fi
           if [[ -z "$doc_src" ]]; then
-            echo "stdx doc not found in ext_stdx_release" >&2
+            echo "stdx doc not found in ext_stdx" >&2
             exit 1
           fi
           rsync -a --delete "$doc_src"/ stdx_release_book/src/
@@ -425,13 +360,70 @@ jobs:
           cp scripts/* stdx_release_book/scripts/
           cp book.toml stdx_release_book/book.toml
 
+      - name: Checkout PR base branches
+        if: ${{ env.BUILD_PR == 'true' }}
+        run: |
+          set -euo pipefail
+          checkout_ref() {
+            local repo_dir="$1"
+            local ref="$2"
+            if git -C "$repo_dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+              git -C "$repo_dir" checkout --detach "origin/$ref"
+            else
+              git -C "$repo_dir" checkout --detach "$ref"
+            fi
+          }
+          checkout_ref ext_runtime "$STD_BRANCH"
+          checkout_ref ext_stdx "$STDX_BRANCH"
+
+      - name: Cherry-pick PRs (custom)
+        if: ${{ env.BUILD_PR == 'true' && (env.STD_PRS != '' || env.STDX_PRS != '') }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          cherry_pick_prs() {
+            local repo_dir="$1"
+            local prs="$2"
+            if [[ -z "$prs" ]]; then
+              return 0
+            fi
+
+            echo "Cherry-picking into $repo_dir: $prs"
+            for pr in $(echo "$prs" | tr ',' ' '); do
+              pr="${pr//[[:space:]]/}"
+              [[ -z "$pr" ]] && continue
+
+              if [[ "$pr" =~ ^[0-9]+$ ]]; then
+                local ref=""
+                for cand in "refs/pull/$pr/head" "pull/$pr/head" "refs/merge-requests/$pr/head"; do
+                  if git -C "$repo_dir" fetch origin "$cand":pr-"$pr"; then
+                    ref="pr-$pr"
+                    break
+                  fi
+                done
+                if [[ -z "$ref" ]]; then
+                  echo "Failed to fetch PR $pr for $repo_dir" >&2
+                  exit 1
+                fi
+                git -C "$repo_dir" cherry-pick "$ref"
+              else
+                git -C "$repo_dir" cherry-pick "$pr"
+              fi
+            done
+          }
+
+          cherry_pick_prs ext_runtime "$STD_PRS"
+          cherry_pick_prs ext_stdx "$STDX_PRS"
+
       - name: Prepare std book (pr)
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
           mkdir -p std_pr_book/src std_pr_book/theme std_pr_book/scripts
           mkdir -p std_pr_book/src/vendor/gitcode
-          rsync -a --delete ext_pr/stdlib/doc/libs/ std_pr_book/src/vendor/gitcode/
+          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_pr_book/src/vendor/gitcode/
 
           cp -r std_pr_book/src/vendor/gitcode/* std_pr_book/src/
           rm -rf std_pr_book/src/std_en
@@ -446,7 +438,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p stdx_pr_book/src stdx_pr_book/theme stdx_pr_book/scripts
-          rsync -a --delete ext_stdx_pr/doc/* stdx_pr_book/src/
+          rsync -a --delete ext_stdx/doc/* stdx_pr_book/src/
           test -f stdx_pr_book/src/summary_cjnative.md && mv -f stdx_pr_book/src/summary_cjnative.md stdx_pr_book/src/SUMMARY.md
           cp -r theme/* stdx_pr_book/theme/
           cp scripts/* stdx_pr_book/scripts/
