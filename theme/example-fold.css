@@ -1,0 +1,35 @@
+.example-fold {
+  background-color: var(--sidebar-bg);
+  border-radius: 6px;
+  margin: 1rem 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.example-fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.example-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.example-fold > summary::marker {
+  content: "";
+}
+
+.example-fold > summary::before {
+  content: "+";
+  display: inline-block;
+  margin-right: 0.4em;
+  width: 1em;
+}
+
+.example-fold[open] > summary::before {
+  content: "-";
+}
+
+.example-fold .example-fold-body > pre {
+  margin-top: 0.6rem;
+}

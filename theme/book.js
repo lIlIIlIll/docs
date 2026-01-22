@@ -312,6 +312,92 @@ aria-label="Show hidden lines"></button>';
     });
 })();
 
+(function exampleCodeFold() {
+    const root = document.querySelector('.content-wrap');
+    if (!root) {
+        return;
+    }
+
+    const labelPatterns = [
+        { re: /^(example|examples)(?:\s*[:\uff1a])?/i, label: 'Example' },
+        { re: /^(\u793a\u4f8b|\u4f8b\u5b50|\u4f8b)(?:\s*[:\uff1a])?/, label: '\u793a\u4f8b' },
+    ];
+
+    function getSummary(text, defaultLabel) {
+        const trimmed = text.replace(/[:\uff1a]\s*$/, '').trim();
+        const lower = trimmed.toLowerCase();
+        if (lower === 'example' || lower === 'examples' || trimmed === '\u793a\u4f8b' || trimmed === '\u4f8b\u5b50' || trimmed === '\u4f8b') {
+            return defaultLabel;
+        }
+        return trimmed || defaultLabel;
+    }
+
+    function matchLabel(text) {
+        for (const item of labelPatterns) {
+            if (item.re.test(text)) {
+                return getSummary(text, item.label);
+            }
+        }
+        return null;
+    }
+
+    function nextMeaningfulSibling(node) {
+        let cur = node.nextSibling;
+        while (cur) {
+            if (cur.nodeType === Node.ELEMENT_NODE) {
+                return cur;
+            }
+            if (cur.nodeType === Node.TEXT_NODE && cur.textContent.trim() !== '') {
+                return null;
+            }
+            cur = cur.nextSibling;
+        }
+        return null;
+    }
+
+    const paragraphs = Array.from(root.querySelectorAll('p'));
+    paragraphs.forEach(function(p) {
+        if (p.closest('details.example-fold')) {
+            return;
+        }
+        const raw = p.textContent.trim();
+        if (!raw) {
+            return;
+        }
+        const summaryText = matchLabel(raw);
+        if (!summaryText) {
+            return;
+        }
+
+        let next = nextMeaningfulSibling(p);
+        const blocks = [];
+        while (next && next.tagName && next.tagName.toLowerCase() === 'pre') {
+            blocks.push(next);
+            next = nextMeaningfulSibling(next);
+        }
+
+        if (blocks.length === 0) {
+            return;
+        }
+
+        const details = document.createElement('details');
+        details.className = 'example-fold';
+
+        const summary = document.createElement('summary');
+        summary.textContent = summaryText;
+        details.appendChild(summary);
+
+        const body = document.createElement('div');
+        body.className = 'example-fold-body';
+        blocks.forEach(function(block) {
+            body.appendChild(block);
+        });
+        details.appendChild(body);
+
+        p.replaceWith(details);
+    });
+})();
+
 (function themes() {
     const html = document.querySelector('html');
     const themeToggleButton = document.getElementById('theme-toggle');

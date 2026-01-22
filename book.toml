@@ -44,6 +44,7 @@ additional-css = [
   "./theme/catppuccin-admonish.css",
   "./theme/catppuccin.css",
   "./theme/table-fullwidth.css",
+  "./theme/example-fold.css",
 ]
 additional-js = [
   "./theme/pagetoc.js",
