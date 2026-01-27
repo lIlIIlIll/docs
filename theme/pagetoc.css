@@ -47,14 +47,14 @@
         top: calc(var(--menu-bar-height) + 12px);
         right: max(8px, calc((90vw - var(--content-max-width)) / 3));
         /* adjust TOC width */
-        width: min(260px, 22vw);
+        width: min(320px, 26vw);
         height: calc(100vh - var(--menu-bar-height) - 0.67em * 4);
         overflow: auto;
         z-index: 3;
     }
     @media (min-width: 1500px) {
         .content main {
-            padding-right: min(260px, 22vw);
+            padding-right: min(320px, 26vw);
         }
     }
     #pagetoc a {
