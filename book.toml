@@ -26,25 +26,21 @@ command = "python3 scripts/table.py"
 [preprocessor._1_blockquote_admonish]
 command = "python3 scripts/blockquote_admonish.py"
 
-[preprocessor.admonish]
-command = "mdbook-admonish"
-assets_version = "3.0.2"    # do not edit: managed by `mdbook-admonish install`
-
 [preprocessor.pagetoc]
-command = "mdbook-pagetoc"
+command = "python3 scripts/pagetoc_wrapper.py"
 renderer = ["html"]
 
 [output.html]
 default-theme = "latte"
 preferred-dark-theme = "macchiato"
 no-section-label = true
-google-analytics = "G-T1KCW2TRHH"
+admonitions = true
 additional-css = [
   "./theme/pagetoc.css",
-  "./theme/catppuccin-admonish.css",
   "./theme/catppuccin.css",
   "./theme/table-fullwidth.css",
   "./theme/example-fold.css",
+  "./theme/custom_style.css",
 ]
 additional-js = [
   "./theme/pagetoc.js",

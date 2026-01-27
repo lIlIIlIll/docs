@@ -85,7 +85,6 @@ function playground_text(playground, hidden = true) {
         const re = /extern\s+crate\s+([a-zA-Z_0-9]+)\s*;/g;
         const snippet_crates = [];
         let item;
-        // eslint-disable-next-line no-cond-assign
         while (item = re.exec(txt)) {
             snippet_crates.push(item[1]);
         }
@@ -97,6 +96,7 @@ function playground_text(playground, hidden = true) {
 
         if (all_available) {
             play_button.classList.remove('hidden');
+            play_button.hidden = false;
         } else {
             play_button.classList.add('hidden');
         }
@@ -153,93 +153,122 @@ function playground_text(playground, hidden = true) {
             .catch(error => result_block.innerText = 'Playground Communication: ' + error.message);
     }
 
-    // Syntax highlighting Configuration
-    hljs.configure({
-        tabReplace: '    ', // 4 spaces
-        languages: [], // Languages used for auto-detection
-    });
+    function ensureCangjieLanguage(done) {
+        if (typeof hljs === 'undefined' || !hljs.registerLanguage) {
+            done();
+            return;
+        }
+        if (hljs.getLanguage && hljs.getLanguage('cangjie')) {
+            done();
+            return;
+        }
+        if (typeof cangjie === 'function') {
+            try { hljs.registerLanguage('cangjie', cangjie); } catch (_) { }
+            done();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = path_to_root + 'theme/hljs-cangjie.js';
+        script.async = false;
+        script.onload = function() {
+            if (typeof cangjie === 'function') {
+                try { hljs.registerLanguage('cangjie', cangjie); } catch (_) { }
+            }
+            done();
+        };
+        script.onerror = function() { done(); };
+        document.head.appendChild(script);
+    }
 
-    const code_nodes = Array
-        .from(document.querySelectorAll('code'))
-        // Don't highlight `inline code` blocks in headers.
-        .filter(function(node) {
-            return !node.parentElement.classList.contains('header');
-        });
+    function applyBoringLineControls() {
+        Array.from(document.querySelectorAll('code.hljs')).forEach(function(block) {
+            const lines = Array.from(block.querySelectorAll('.boring'));
+            // If no lines were hidden, return
+            if (!lines.length) {
+                return;
+            }
+            block.classList.add('hide-boring');
 
-    if (window.ace) {
-        // language-rust class needs to be removed for editable
-        // blocks or highlightjs will capture events
-        code_nodes
-            .filter(function(node) {
-                return node.classList.contains('editable');
-            })
-            .forEach(function(block) {
-                block.classList.remove('language-rust');
-            });
+            const buttons = document.createElement('div');
+            buttons.className = 'buttons';
+            buttons.innerHTML = '<button title="Show hidden lines" \
+aria-label="Show hidden lines"></button>';
+            buttons.firstChild.innerHTML = document.getElementById('fa-eye').innerHTML;
 
-        code_nodes
-            .filter(function(node) {
-                return !node.classList.contains('editable');
-            })
-            .forEach(function(block) {
-                if (hljs.highlightElement) {
-                    hljs.highlightElement(block);
-                } else {
-                    hljs.highlightBlock(block);
+            // add expand button
+            const pre_block = block.parentNode;
+            pre_block.insertBefore(buttons, pre_block.firstChild);
+
+            buttons.firstChild.addEventListener('click', function(e) {
+                if (this.title === 'Show hidden lines') {
+                    this.innerHTML = document.getElementById('fa-eye-slash').innerHTML;
+                    this.title = 'Hide lines';
+                    this.setAttribute('aria-label', e.target.title);
+
+                    block.classList.remove('hide-boring');
+                } else if (this.title === 'Hide lines') {
+                    this.innerHTML = document.getElementById('fa-eye').innerHTML;
+                    this.title = 'Show hidden lines';
+                    this.setAttribute('aria-label', e.target.title);
+
+                    block.classList.add('hide-boring');
                 }
             });
-    } else {
-        code_nodes.forEach(function(block) {
-            if (hljs.highlightElement) {
-                hljs.highlightElement(block);
-            } else {
-                hljs.highlightBlock(block);
-            }
         });
     }
 
-    // Adding the hljs class gives code blocks the color css
-    // even if highlighting doesn't apply
-    code_nodes.forEach(function(block) {
-        block.classList.add('hljs');
-    });
-
-    Array.from(document.querySelectorAll('code.hljs')).forEach(function(block) {
-
-        const lines = Array.from(block.querySelectorAll('.boring'));
-        // If no lines were hidden, return
-        if (!lines.length) {
+    function runHighlighting() {
+        if (typeof hljs === 'undefined') {
             return;
         }
-        block.classList.add('hide-boring');
 
-        const buttons = document.createElement('div');
-        buttons.className = 'buttons';
-        buttons.innerHTML = '<button class="fa fa-eye" title="Show hidden lines" \
-aria-label="Show hidden lines"></button>';
-
-        // add expand button
-        const pre_block = block.parentNode;
-        pre_block.insertBefore(buttons, pre_block.firstChild);
-
-        pre_block.querySelector('.buttons').addEventListener('click', function(e) {
-            if (e.target.classList.contains('fa-eye')) {
-                e.target.classList.remove('fa-eye');
-                e.target.classList.add('fa-eye-slash');
-                e.target.title = 'Hide lines';
-                e.target.setAttribute('aria-label', e.target.title);
-
-                block.classList.remove('hide-boring');
-            } else if (e.target.classList.contains('fa-eye-slash')) {
-                e.target.classList.remove('fa-eye-slash');
-                e.target.classList.add('fa-eye');
-                e.target.title = 'Show hidden lines';
-                e.target.setAttribute('aria-label', e.target.title);
-
-                block.classList.add('hide-boring');
-            }
+        // Syntax highlighting Configuration
+        hljs.configure({
+            tabReplace: '    ', // 4 spaces
+            languages: [], // Languages used for auto-detection
         });
-    });
+
+        const code_nodes = Array
+            .from(document.querySelectorAll('code'))
+            // Don't highlight `inline code` blocks in headers.
+            .filter(function(node) {
+                return !node.parentElement.classList.contains('header');
+            });
+
+        if (window.ace) {
+            // language-rust class needs to be removed for editable
+            // blocks or highlightjs will capture events
+            code_nodes
+                .filter(function(node) {
+                    return node.classList.contains('editable');
+                })
+                .forEach(function(block) {
+                    block.classList.remove('language-rust');
+                });
+
+            code_nodes
+                .filter(function(node) {
+                    return !node.classList.contains('editable');
+                })
+                .forEach(function(block) {
+                    hljs.highlightBlock(block);
+                });
+        } else {
+            code_nodes.forEach(function(block) {
+                hljs.highlightBlock(block);
+            });
+        }
+
+        // Adding the hljs class gives code blocks the color css
+        // even if highlighting doesn't apply
+        code_nodes.forEach(function(block) {
+            block.classList.add('hljs');
+        });
+
+        applyBoringLineControls();
+    }
+
+    ensureCangjieLanguage(runHighlighting);
 
     if (window.playground_copyable) {
         Array.from(document.querySelectorAll('pre code')).forEach(function(block) {
@@ -274,10 +303,11 @@ aria-label="Show hidden lines"></button>';
         }
 
         const runCodeButton = document.createElement('button');
-        runCodeButton.className = 'fa fa-play play-button';
+        runCodeButton.className = 'play-button';
         runCodeButton.hidden = true;
         runCodeButton.title = 'Run this code';
         runCodeButton.setAttribute('aria-label', runCodeButton.title);
+        runCodeButton.innerHTML = document.getElementById('fa-play').innerHTML;
 
         buttons.insertBefore(runCodeButton, buttons.firstChild);
         runCodeButton.addEventListener('click', () => {
@@ -297,9 +327,11 @@ aria-label="Show hidden lines"></button>';
         const code_block = pre_block.querySelector('code');
         if (window.ace && code_block.classList.contains('editable')) {
             const undoChangesButton = document.createElement('button');
-            undoChangesButton.className = 'fa fa-history reset-button';
+            undoChangesButton.className = 'reset-button';
             undoChangesButton.title = 'Undo changes';
             undoChangesButton.setAttribute('aria-label', undoChangesButton.title);
+            undoChangesButton.innerHTML +=
+                document.getElementById('fa-clock-rotate-left').innerHTML;
 
             buttons.insertBefore(undoChangesButton, buttons.firstChild);
 
@@ -312,145 +344,25 @@ aria-label="Show hidden lines"></button>';
     });
 })();
 
-(function exampleCodeFold() {
-    const root = document.querySelector('.content-wrap');
-    if (!root) {
-        return;
-    }
-
-    const labelPatterns = [
-        { re: /^(example|examples)(?:\s*[:\uff1a])?/i, label: 'Example' },
-        { re: /^(\u793a\u4f8b|\u4f8b\u5b50|\u4f8b)(?:\s*[:\uff1a])?/, label: '\u793a\u4f8b' },
-    ];
-    const outputPatterns = [
-        { re: /^(output|outputs|result|results)(?:\s*[:\uff1a])?/i },
-        { re: /^(\u8f93\u51fa|\u8fd0\u884c\u7ed3\u679c|\u53ef\u80fd\u7684\u8fd0\u884c\u7ed3\u679c|\u8fd0\u884c\u7ed3\u679c\u5982\u4e0b|\u53ef\u80fd\u51fa\u73b0\u7684\u8fd0\u884c\u7ed3\u679c)(?:\s*[:\uff1a])?/ },
-    ];
-
-    function getSummary(text, defaultLabel) {
-        const trimmed = text.replace(/[:\uff1a]\s*$/, '').trim();
-        const lower = trimmed.toLowerCase();
-        if (lower === 'example' || lower === 'examples' || trimmed === '\u793a\u4f8b' || trimmed === '\u4f8b\u5b50' || trimmed === '\u4f8b') {
-            return defaultLabel;
-        }
-        return trimmed || defaultLabel;
-    }
-
-    function matchLabel(text) {
-        for (const item of labelPatterns) {
-            if (item.re.test(text)) {
-                return getSummary(text, item.label);
-            }
-        }
-        return null;
-    }
-
-    function isOutputLabel(text) {
-        for (const item of outputPatterns) {
-            if (item.re.test(text)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function nextMeaningfulSibling(node) {
-        let cur = node.nextSibling;
-        while (cur) {
-            if (cur.nodeType === Node.ELEMENT_NODE) {
-                return cur;
-            }
-            if (cur.nodeType === Node.TEXT_NODE && cur.textContent.trim() !== '') {
-                return null;
-            }
-            cur = cur.nextSibling;
-        }
-        return null;
-    }
-
-    const paragraphs = Array.from(root.querySelectorAll('p'));
-    paragraphs.forEach(function(p) {
-        if (p.closest('details.example-fold')) {
-            return;
-        }
-        const raw = p.textContent.trim();
-        if (!raw) {
-            return;
-        }
-        const summaryText = matchLabel(raw);
-        if (!summaryText) {
-            return;
-        }
-
-        let next = nextMeaningfulSibling(p);
-        const blocks = [];
-        while (next && next.tagName && next.tagName.toLowerCase() === 'pre') {
-            blocks.push(next);
-            next = nextMeaningfulSibling(next);
-        }
-
-        if (blocks.length === 0) {
-            return;
-        }
-
-        let outputLabel = null;
-        const outputBlocks = [];
-        if (next && next.tagName && next.tagName.toLowerCase() === 'p') {
-            const outputText = next.textContent.trim();
-            if (outputText && isOutputLabel(outputText)) {
-                outputLabel = next;
-                outputLabel.classList.add('example-fold-output-label');
-                next = nextMeaningfulSibling(next);
-                while (next && next.tagName && next.tagName.toLowerCase() === 'pre') {
-                    outputBlocks.push(next);
-                    next = nextMeaningfulSibling(next);
-                }
-            }
-        }
-
-        const details = document.createElement('details');
-        details.className = 'example-fold';
-
-        const summary = document.createElement('summary');
-        summary.textContent = summaryText;
-        details.appendChild(summary);
-
-        const body = document.createElement('div');
-        body.className = 'example-fold-body';
-        blocks.forEach(function(block) {
-            body.appendChild(block);
-        });
-        if (outputLabel) {
-            body.appendChild(outputLabel);
-        }
-        outputBlocks.forEach(function(block) {
-            body.appendChild(block);
-        });
-        details.appendChild(body);
-
-        p.replaceWith(details);
-    });
-})();
-
 (function themes() {
     const html = document.querySelector('html');
-    const themeToggleButton = document.getElementById('theme-toggle');
-    const themePopup = document.getElementById('theme-list');
+    const themeToggleButton = document.getElementById('mdbook-theme-toggle');
+    const themePopup = document.getElementById('mdbook-theme-list');
     const themeColorMetaTag = document.querySelector('meta[name="theme-color"]');
     const themeIds = [];
     themePopup.querySelectorAll('button.theme').forEach(function(el) {
         themeIds.push(el.id);
     });
     const stylesheets = {
-        ayuHighlight: document.querySelector('#ayu-highlight-css'),
-        tomorrowNight: document.querySelector('#tomorrow-night-css'),
-        highlight: document.querySelector('#highlight-css'),
+        ayuHighlight: document.querySelector('#mdbook-ayu-highlight-css'),
+        tomorrowNight: document.querySelector('#mdbook-tomorrow-night-css'),
+        highlight: document.querySelector('#mdbook-highlight-css'),
     };
 
     function showThemes() {
         themePopup.style.display = 'block';
         themeToggleButton.setAttribute('aria-expanded', true);
-        themePopup.querySelector('button#' + get_theme()).focus();
+        themePopup.querySelector('button#mdbook-theme-' + get_theme()).focus();
     }
 
     function updateThemeSelected() {
@@ -458,10 +370,10 @@ aria-label="Show hidden lines"></button>';
             el.classList.remove('theme-selected');
         });
         const selected = get_saved_theme() ?? 'default_theme';
-        let element = themePopup.querySelector('button#' + selected);
+        let element = themePopup.querySelector('button#mdbook-theme-' + selected);
         if (element === null) {
             // Fall back in case there is no "Default" item.
-            element = themePopup.querySelector('button#' + get_theme());
+            element = themePopup.querySelector('button#mdbook-theme-' + get_theme());
         }
         element.classList.add('theme-selected');
     }
@@ -476,7 +388,7 @@ aria-label="Show hidden lines"></button>';
         let theme = null;
         try {
             theme = localStorage.getItem('mdbook-theme');
-        } catch (e) {
+        } catch {
             // ignore error.
         }
         return theme;
@@ -488,7 +400,7 @@ aria-label="Show hidden lines"></button>';
 
     function get_theme() {
         const theme = get_saved_theme();
-        if (theme === null || theme === undefined || !themeIds.includes(theme)) {
+        if (theme === null || theme === undefined || !themeIds.includes('mdbook-theme-' + theme)) {
             if (typeof default_dark_theme === 'undefined') {
                 // A customized index.hbs might not define this, so fall back to
                 // old behavior of determining the default on page load.
@@ -537,7 +449,7 @@ aria-label="Show hidden lines"></button>';
         if (store) {
             try {
                 localStorage.setItem('mdbook-theme', theme);
-            } catch (e) {
+            } catch {
                 // ignore error.
             }
         }
@@ -573,6 +485,8 @@ aria-label="Show hidden lines"></button>';
         } else {
             return;
         }
+        theme = theme.replace(/^mdbook-theme-/, '');
+
         if (theme === 'default_theme' || theme === null) {
             delete_saved_theme();
             set_theme(get_theme(), false);
@@ -642,12 +556,310 @@ aria-label="Show hidden lines"></button>';
     });
 })();
 
+(function fonts() {
+    const html = document.querySelector('html');
+    const fontToggleButton = document.getElementById('mdbook-font-toggle');
+    const fontPopup = document.getElementById('mdbook-font-list');
+    if (!fontToggleButton || !fontPopup) {
+        return;
+    }
+
+    const fontIds = [];
+    fontPopup.querySelectorAll('button.theme').forEach(function(el) {
+        fontIds.push(el.id);
+    });
+
+    const fontMap = {
+        default: null,
+        system: 'system-ui, -apple-system, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif',
+        cjk: '"Source Han Sans SC","Noto Sans CJK SC","Noto Sans SC","PingFang SC","Microsoft YaHei","Heiti SC","Hiragino Sans GB",sans-serif',
+        serif: '"Source Han Serif SC","Noto Serif CJK SC","Noto Serif SC","Songti SC","SimSun","STSong",serif',
+    };
+
+    function showFonts() {
+        const themePopup = document.getElementById('mdbook-theme-list');
+        const monoPopup = document.getElementById('mdbook-mono-list');
+        if (themePopup) {
+            themePopup.style.display = 'none';
+        }
+        if (monoPopup) {
+            monoPopup.style.display = 'none';
+        }
+        fontPopup.style.display = 'block';
+        fontToggleButton.setAttribute('aria-expanded', true);
+        const current = fontPopup.querySelector('button#mdbook-font-' + get_font());
+        if (current) {
+            current.focus();
+        }
+    }
+
+    function hideFonts() {
+        fontPopup.style.display = 'none';
+        fontToggleButton.setAttribute('aria-expanded', false);
+        fontToggleButton.focus();
+    }
+
+    function get_saved_font() {
+        let font = null;
+        try {
+            font = localStorage.getItem('mdbook-font');
+        } catch {
+            // ignore error.
+        }
+        return font;
+    }
+
+    function delete_saved_font() {
+        localStorage.removeItem('mdbook-font');
+    }
+
+    function get_font() {
+        const font = get_saved_font();
+        if (font === null || font === undefined || !fontIds.includes('mdbook-font-' + font)) {
+            return 'default';
+        }
+        return font;
+    }
+
+    function updateFontSelected() {
+        fontPopup.querySelectorAll('.theme-selected').forEach(function(el) {
+            el.classList.remove('theme-selected');
+        });
+        const selected = get_font();
+        const element = fontPopup.querySelector('button#mdbook-font-' + selected);
+        if (element) {
+            element.classList.add('theme-selected');
+        }
+    }
+
+    function set_font(font, store = true) {
+        const value = Object.prototype.hasOwnProperty.call(fontMap, font)
+            ? fontMap[font]
+            : null;
+        if (!value) {
+            html.style.removeProperty('--text-font');
+        } else {
+            html.style.setProperty('--text-font', value);
+        }
+        if (store) {
+            try {
+                localStorage.setItem('mdbook-font', font);
+            } catch {
+                // ignore error.
+            }
+        }
+        updateFontSelected();
+    }
+
+    set_font(get_font(), false);
+
+    fontToggleButton.addEventListener('click', function() {
+        if (fontPopup.style.display === 'block') {
+            hideFonts();
+        } else {
+            showFonts();
+        }
+    });
+
+    fontPopup.addEventListener('click', function(e) {
+        let font;
+        if (e.target.className === 'theme') {
+            font = e.target.id;
+        } else if (e.target.parentElement && e.target.parentElement.className === 'theme') {
+            font = e.target.parentElement.id;
+        } else {
+            return;
+        }
+        font = font.replace(/^mdbook-font-/, '');
+        if (font === 'default' || font === null) {
+            delete_saved_font();
+            set_font(get_font(), false);
+        } else {
+            set_font(font);
+        }
+    });
+
+    fontPopup.addEventListener('focusout', function(e) {
+        if (!!e.relatedTarget &&
+            !fontToggleButton.contains(e.relatedTarget) &&
+            !fontPopup.contains(e.relatedTarget)
+        ) {
+            hideFonts();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (fontPopup.style.display === 'block' &&
+            !fontToggleButton.contains(e.target) &&
+            !fontPopup.contains(e.target)
+        ) {
+            hideFonts();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (fontPopup.style.display === 'block' && e.key === 'Escape') {
+            hideFonts();
+            e.preventDefault();
+        }
+    });
+})();
+
+(function monoFonts() {
+    const html = document.querySelector('html');
+    const monoToggleButton = document.getElementById('mdbook-mono-toggle');
+    const monoPopup = document.getElementById('mdbook-mono-list');
+    if (!monoToggleButton || !monoPopup) {
+        return;
+    }
+
+    const monoIds = [];
+    monoPopup.querySelectorAll('button.theme').forEach(function(el) {
+        monoIds.push(el.id);
+    });
+
+    const monoMap = {
+        default: null,
+        maple: '"Maple Mono NL CN","Maple Mono Normal NL CN","Maple Mono NF CN","Maple Mono NL","Maple Mono Normal NL","Maple Mono NF","Maple Mono","Source Code Pro","Ubuntu Mono","DejaVu Sans Mono",Menlo,Consolas,monospace',
+        sourcecodepro: '"Source Code Pro",Consolas,"Ubuntu Mono",Menlo,"DejaVu Sans Mono",monospace',
+        system: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+    };
+
+    function showMonoFonts() {
+        const themePopup = document.getElementById('mdbook-theme-list');
+        const fontPopup = document.getElementById('mdbook-font-list');
+        if (themePopup) {
+            themePopup.style.display = 'none';
+        }
+        if (fontPopup) {
+            fontPopup.style.display = 'none';
+        }
+        monoPopup.style.display = 'block';
+        monoToggleButton.setAttribute('aria-expanded', true);
+        const current = monoPopup.querySelector('button#mdbook-mono-' + get_mono());
+        if (current) {
+            current.focus();
+        }
+    }
+
+    function hideMonoFonts() {
+        monoPopup.style.display = 'none';
+        monoToggleButton.setAttribute('aria-expanded', false);
+        monoToggleButton.focus();
+    }
+
+    function get_saved_mono() {
+        let mono = null;
+        try {
+            mono = localStorage.getItem('mdbook-mono-font');
+        } catch {
+            // ignore error.
+        }
+        return mono;
+    }
+
+    function delete_saved_mono() {
+        localStorage.removeItem('mdbook-mono-font');
+    }
+
+    function get_mono() {
+        const mono = get_saved_mono();
+        if (mono === null || mono === undefined || !monoIds.includes('mdbook-mono-' + mono)) {
+            return 'default';
+        }
+        return mono;
+    }
+
+    function updateMonoSelected() {
+        monoPopup.querySelectorAll('.theme-selected').forEach(function(el) {
+            el.classList.remove('theme-selected');
+        });
+        const selected = get_mono();
+        const element = monoPopup.querySelector('button#mdbook-mono-' + selected);
+        if (element) {
+            element.classList.add('theme-selected');
+        }
+    }
+
+    function set_mono(mono, store = true) {
+        const value = Object.prototype.hasOwnProperty.call(monoMap, mono)
+            ? monoMap[mono]
+            : null;
+        if (!value) {
+            html.style.removeProperty('--mono-font');
+        } else {
+            html.style.setProperty('--mono-font', value);
+        }
+        if (store) {
+            try {
+                localStorage.setItem('mdbook-mono-font', mono);
+            } catch {
+                // ignore error.
+            }
+        }
+        updateMonoSelected();
+    }
+
+    set_mono(get_mono(), false);
+
+    monoToggleButton.addEventListener('click', function() {
+        if (monoPopup.style.display === 'block') {
+            hideMonoFonts();
+        } else {
+            showMonoFonts();
+        }
+    });
+
+    monoPopup.addEventListener('click', function(e) {
+        let mono;
+        if (e.target.className === 'theme') {
+            mono = e.target.id;
+        } else if (e.target.parentElement && e.target.parentElement.className === 'theme') {
+            mono = e.target.parentElement.id;
+        } else {
+            return;
+        }
+        mono = mono.replace(/^mdbook-mono-/, '');
+        if (mono === 'default' || mono === null) {
+            delete_saved_mono();
+            set_mono(get_mono(), false);
+        } else {
+            set_mono(mono);
+        }
+    });
+
+    monoPopup.addEventListener('focusout', function(e) {
+        if (!!e.relatedTarget &&
+            !monoToggleButton.contains(e.relatedTarget) &&
+            !monoPopup.contains(e.relatedTarget)
+        ) {
+            hideMonoFonts();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (monoPopup.style.display === 'block' &&
+            !monoToggleButton.contains(e.target) &&
+            !monoPopup.contains(e.target)
+        ) {
+            hideMonoFonts();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (monoPopup.style.display === 'block' && e.key === 'Escape') {
+            hideMonoFonts();
+            e.preventDefault();
+        }
+    });
+})();
+
 (function sidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const sidebarLinks = document.querySelectorAll('#sidebar a');
-    const sidebarToggleButton = document.getElementById('sidebar-toggle');
-    const sidebarResizeHandle = document.getElementById('sidebar-resize-handle');
-    const sidebarCheckbox = document.getElementById('sidebar-toggle-anchor');
+    const sidebar = document.getElementById('mdbook-sidebar');
+    const sidebarLinks = document.querySelectorAll('#mdbook-sidebar a');
+    const sidebarToggleButton = document.getElementById('mdbook-sidebar-toggle');
+    const sidebarResizeHandle = document.getElementById('mdbook-sidebar-resize-handle');
+    const sidebarCheckbox = document.getElementById('mdbook-sidebar-toggle-anchor');
     let firstContact = null;
 
 
@@ -683,7 +895,7 @@ aria-label="Show hidden lines"></button>';
         sidebar.setAttribute('aria-hidden', false);
         try {
             localStorage.setItem('mdbook-sidebar', 'visible');
-        } catch (e) {
+        } catch {
             // Ignore error.
         }
     }
@@ -697,7 +909,7 @@ aria-label="Show hidden lines"></button>';
         sidebar.setAttribute('aria-hidden', true);
         try {
             localStorage.setItem('mdbook-sidebar', 'hidden');
-        } catch (e) {
+        } catch {
             // Ignore error.
         }
     }
@@ -908,7 +1120,7 @@ aria-label="Show hidden lines"></button>';
 })();
 
 (function controllMenu() {
-    const menu = document.getElementById('menu-bar');
+    const menu = document.getElementById('mdbook-menu-bar');
 
     (function controllPosition() {
         let scrollTop = document.scrollingElement.scrollTop;

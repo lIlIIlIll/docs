@@ -1,3 +1,7 @@
+:root {
+  --mono-font: "Maple Mono NL CN", "Maple Mono Normal NL CN", "Maple Mono NF CN", "Maple Mono NL", "Maple Mono Normal NL", "Maple Mono NF", "Maple Mono", "Source Code Pro", "Ubuntu Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+
 html.light .hljs-comment,
 html.light .hljs-quote {
   color: #575757;
@@ -70,7 +74,6 @@ html.light .hljs-emphasis {
 }
 
 html.light .hljs {
-  display: block;
   overflow-x: auto;
   background: #f1f3f4;
   color: #000;
@@ -86,3 +89,30 @@ html.light .hljs-deletion {
   background-color: #ffeef0;
 }
 
+.on-this-page {
+  display: none;
+}
+
+/* Override mdBook admonition titles with Chinese labels */
+.blockquote-tag .blockquote-tag-title {
+  font-size: 0;
+}
+.blockquote-tag .blockquote-tag-title::after {
+  font-size: 1.4rem;
+  margin-left: 8px;
+}
+.blockquote-tag-note .blockquote-tag-title::after {
+  content: "说明";
+}
+.blockquote-tag-tip .blockquote-tag-title::after {
+  content: "提示";
+}
+.blockquote-tag-important .blockquote-tag-title::after {
+  content: "重要";
+}
+.blockquote-tag-warning .blockquote-tag-title::after {
+  content: "警告";
+}
+.blockquote-tag-caution .blockquote-tag-title::after {
+  content: "注意";
+}
