@@ -67,6 +67,19 @@
         text-align: left;
         text-decoration: none;
     }
+    #pagetoc .pagetoc-toggle {
+        display: inline-block;
+        width: 12px;
+        margin-right: 6px;
+        transform: rotate(90deg);
+        transition: transform 0.2s ease;
+    }
+    #pagetoc .pagetoc-collapsed .pagetoc-toggle {
+        transform: rotate(0deg);
+    }
+    #pagetoc .pagetoc-hidden {
+        display: none;
+    }
     #pagetoc a:hover,
     #pagetoc a.active {
         background: var(--sidebar-bg);

@@ -75,17 +75,117 @@ if (document.getElementsByClassName("header").length <= 1) {
 } else {
     // Populate sidebar on load
     window.addEventListener("load", () => {
+        const pagetoc = document.getElementById("pagetoc");
+        const links = [];
+        const levels = [];
+
+        function levelFromTag(tagName) {
+            const m = /^H(\d+)$/.exec(tagName);
+            return m ? parseInt(m[1], 10) : 0;
+        }
+
+        function setCollapsed(idx, collapsed) {
+            const baseLevel = levels[idx];
+            links[idx].classList.toggle("pagetoc-collapsed", collapsed);
+            for (let j = idx + 1; j < links.length; j++) {
+                if (levels[j] <= baseLevel) {
+                    break;
+                }
+                if (collapsed) {
+                    links[j].classList.add("pagetoc-hidden");
+                } else {
+                    links[j].classList.remove("pagetoc-hidden");
+                }
+            }
+        }
+
+        function expandForActive(idx) {
+            const activeLevel = levels[idx];
+            if (activeLevel <= 2) {
+                return;
+            }
+            for (let j = idx - 1; j >= 0; j--) {
+                if (levels[j] === 2) {
+                    setCollapsed(j, false);
+                    break;
+                }
+            }
+        }
+
         for (const header of document.getElementsByClassName("header")) {
             const link = document.createElement("a");
             link.appendChild(document.createTextNode(header.text));
             link.href = header.hash;
-            link.classList.add("pagetoc-" + header.parentElement.tagName);
-            document.getElementById("pagetoc").appendChild(link);
+            const tagName = header.parentElement.tagName;
+            link.classList.add("pagetoc-" + tagName);
+            pagetoc.appendChild(link);
             link.onclick = () => updatePageToc(link);
+
+            links.push(link);
+            levels.push(levelFromTag(tagName));
+
+            // Add toggle for H2 headings to collapse their children
+            if (tagName === "H2") {
+                const toggle = document.createElement("span");
+                toggle.className = "pagetoc-toggle";
+                toggle.textContent = "▸";
+                toggle.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const idx = links.indexOf(link);
+                    if (idx === -1) {
+                        return;
+                    }
+                    const collapsed = !links[idx].classList.contains("pagetoc-collapsed");
+                    setCollapsed(idx, collapsed);
+                };
+                link.prepend(toggle);
+            }
         }
         updatePageToc();
+
+        // Ensure active section is visible after initial render
+        const activeIdx = links.findIndex((link) => link.classList.contains("active"));
+        if (activeIdx !== -1) {
+            expandForActive(activeIdx);
+        }
     });
 
     // Update page table of contents selected heading on scroll
-    window.addEventListener("scroll", () => updatePageToc());
+    window.addEventListener("scroll", () => {
+        updatePageToc();
+        const pagetoc = document.getElementById("pagetoc");
+        if (!pagetoc) {
+            return;
+        }
+        const items = Array.from(pagetoc.children);
+        const activeIdx = items.findIndex((link) => link.classList.contains("active"));
+        if (activeIdx !== -1) {
+            const activeLink = items[activeIdx];
+            const activeLevel = /^pagetoc-H(\d+)$/.exec(
+                Array.from(activeLink.classList).find((c) => c.startsWith("pagetoc-H")) || "",
+            );
+            if (activeLevel && parseInt(activeLevel[1], 10) > 2) {
+                // Expand the nearest H2 ancestor if collapsed
+                for (let j = activeIdx - 1; j >= 0; j--) {
+                    const cls = Array.from(items[j].classList).find((c) => c.startsWith("pagetoc-H"));
+                    if (!cls) {
+                        continue;
+                    }
+                    const lvl = parseInt(cls.replace("pagetoc-H", ""), 10);
+                    if (lvl === 2) {
+                        items[j].classList.remove("pagetoc-collapsed");
+                        for (let k = j + 1; k < items.length; k++) {
+                            const kcls = Array.from(items[k].classList).find((c) => c.startsWith("pagetoc-H"));
+                            if (kcls && parseInt(kcls.replace("pagetoc-H", ""), 10) <= 2) {
+                                break;
+                            }
+                            items[k].classList.remove("pagetoc-hidden");
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    });
 }
