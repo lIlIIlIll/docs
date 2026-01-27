@@ -497,7 +497,8 @@ window.search = window.search || {};
 
     // Eventhandler for keyevents while the searchbar is focused
     function searchbarKeyUpHandler(e, force = false) {
-        if (enterOnly && !force) {
+        const enterOnlyActive = search_enter_toggle ? search_enter_toggle.checked : enterOnly;
+        if (enterOnlyActive && !force) {
             const key = e && (e.key || e.keyCode);
             const code = e && e.code;
             const isEnter = key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter' || key === 13;
