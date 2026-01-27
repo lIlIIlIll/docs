@@ -47,4 +47,5 @@ additional-js = [
   "./theme/elasticlunr.js",
   "./theme/fzf.umd.js",
   "./theme/hljs-cangjie.js",
+  "./theme/searcher-custom.js",
 ]

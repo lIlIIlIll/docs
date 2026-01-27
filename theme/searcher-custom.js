@@ -291,9 +291,14 @@ window.search = window.search || {};
             enterOnly = false;
         }
         if (search_enter_toggle) {
-            search_enter_toggle.checked = enterOnly;
-            search_enter_toggle.addEventListener('change', () => {
-                enterOnly = search_enter_toggle.checked;
+            searchbar_outer.classList.toggle('enter-only', enterOnly);
+            search_enter_toggle.setAttribute('aria-pressed', enterOnly ? 'true' : 'false');
+            search_enter_toggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                enterOnly = !enterOnly;
+                searchbar_outer.classList.toggle('enter-only', enterOnly);
+                search_enter_toggle.setAttribute('aria-pressed', enterOnly ? 'true' : 'false');
                 try {
                     localStorage.setItem(ENTER_SEARCH_KEY, String(enterOnly));
                 } catch {
@@ -497,14 +502,15 @@ window.search = window.search || {};
 
     // Eventhandler for keyevents while the searchbar is focused
     function searchbarKeyUpHandler(e, force = false) {
-        const enterOnlyActive = search_enter_toggle ? search_enter_toggle.checked : enterOnly;
+        const enterOnlyActive = enterOnly || searchbar_outer.classList.contains('enter-only');
+        const searchterm = searchbar.value.trim();
         if (enterOnlyActive && !force) {
-            const key = e && (e.key || e.keyCode);
+            const key = e && (e.key || e.keyCode || e.which);
             const code = e && e.code;
-            const isEnter = key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter' || key === 13;
-            const searchterm = searchbar.value.trim();
+            const isEnter = key === 'Enter' || key === 'NumpadEnter' ||
+                code === 'Enter' || code === 'NumpadEnter' || key === 13;
             if (!isEnter) {
-                if (searchterm === '') {
+                if (searchterm === '' || searchterm !== current_searchterm) {
                     searchbar.classList.remove('active');
                     showResults(false);
                     removeChildren(searchresults);
@@ -514,7 +520,6 @@ window.search = window.search || {};
                 return;
             }
         }
-        const searchterm = searchbar.value.trim();
         if (searchterm !== '') {
             searchbar.classList.add('active');
             doSearch(searchterm);

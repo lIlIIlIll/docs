@@ -277,10 +277,9 @@
                                     </svg>
                                 </span>
                             </div>
-                            <label class="search-enter-toggle" id="mdbook-search-enter-label" for="mdbook-search-enter-toggle">
-                                <input type="checkbox" id="mdbook-search-enter-toggle">
+                            <button class="search-enter-toggle" id="mdbook-search-enter-toggle" type="button" aria-pressed="false" title="回车搜索">
                                 <span class="search-enter-icon" aria-hidden="true">↵</span>
-                            </label>
+                            </button>
                         </div>
                     </form>
                     <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
@@ -474,7 +473,6 @@
         {{#if search_js}}
         <script src="{{ resource "elasticlunr.min.js" }}"></script>
         <script src="{{ resource "mark.min.js" }}"></script>
-        <script src="{{ resource "searcher.js" }}"></script>
         {{/if}}
 
         <script src="{{ resource "clipboard.min.js" }}"></script>

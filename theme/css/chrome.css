@@ -367,12 +367,8 @@ mark.fade-out {
     font-size: 0.75em;
     color: var(--icons);
     cursor: pointer;
-}
-
-.search-enter-toggle input[type="checkbox"] {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
+    z-index: 2;
+    pointer-events: auto;
 }
 
 .search-enter-icon {
@@ -385,8 +381,10 @@ mark.fade-out {
     line-height: 1;
 }
 
-.search-enter-toggle input[type="checkbox"]:checked + .search-enter-icon {
+.searchbar-outer.enter-only .search-enter-toggle {
     color: var(--fg);
+    border-color: var(--sidebar-active);
+    background-color: var(--theme-hover);
 }
 
 .spinner-wrapper {
@@ -398,6 +396,8 @@ mark.fade-out {
     bottom: var(--spinner-margin);
     padding: 6px;
     background-color: var(--bg);
+    z-index: 1;
+    pointer-events: none;
 }
 
 #fa-spin {
