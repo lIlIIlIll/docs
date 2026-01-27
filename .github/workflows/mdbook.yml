@@ -453,8 +453,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install mdBook (pinned)
         run: |
-          if ! command -v mdbook >/dev/null; then
-            cargo install --locked mdbook --version ${MDBOOK_VERSION}
+          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook >/dev/null; then
+            cargo install --locked mdbook --version ${MDBOOK_VERSION} --force
           fi
           mdbook --version
       - name: Install mdbook-pagetoc(if needed)
@@ -463,9 +463,9 @@ jobs:
           MDBOOK_PAGETOC_VERSION: "0.3.0"
         run: |
           set -euo pipefail
-          if ! command -v mdbook-pagetoc >/dev/null; then
+          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook-pagetoc >/dev/null; then
             echo "mdbook-pagetoc not found. Installing..."
-            cargo install mdbook-pagetoc --locked --version "$MDBOOK_PAGETOC_VERSION"
+            cargo install mdbook-pagetoc --locked --version "$MDBOOK_PAGETOC_VERSION" --force
           fi
       - name: Setup Pages
         id: pages
