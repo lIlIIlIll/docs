@@ -1,0 +1,8 @@
+# Local build output
+/output
+
+# Local content snapshot
+/src
+
+# Legacy plugin stylesheet
+/mdbook-admonish.css
