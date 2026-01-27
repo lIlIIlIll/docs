@@ -351,6 +351,24 @@ mark.fade-out {
     position: relative;
 }
 
+.search-options {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--icons);
+}
+
+.search-options label {
+    cursor: pointer;
+}
+
+.search-options input[type="checkbox"] {
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
 .spinner-wrapper {
     --spinner-margin: 2px;
     position: absolute;

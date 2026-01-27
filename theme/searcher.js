@@ -28,6 +28,7 @@ window.search = window.search || {};
         searchresults_outer = document.getElementById('mdbook-searchresults-outer'),
         searchresults_header = document.getElementById('mdbook-searchresults-header'),
         searchicon = document.getElementById('mdbook-search-toggle'),
+        search_enter_toggle = document.getElementById('mdbook-search-enter-toggle'),
         content = document.getElementById('mdbook-content'),
 
         // SVG text elements don't render if inside a <mark> tag.
@@ -35,6 +36,9 @@ window.search = window.search || {};
         marker = content ? new Mark(content) : null,
         URL_SEARCH_PARAM = 'search',
         URL_MARK_PARAM = 'highlight';
+
+    const ENTER_SEARCH_KEY = 'mdbook-search-enter';
+    let enterOnly = false;
 
     if (!search_wrap || !searchbar_outer || !searchbar || !searchresults ||
         !searchresults_outer || !searchresults_header || !searchicon || !content || !marker) {
@@ -281,12 +285,28 @@ window.search = window.search || {};
     }
 
     function initSearchInteractions(config) {
+        try {
+            enterOnly = localStorage.getItem(ENTER_SEARCH_KEY) === 'true';
+        } catch {
+            enterOnly = false;
+        }
+        if (search_enter_toggle) {
+            search_enter_toggle.checked = enterOnly;
+            search_enter_toggle.addEventListener('change', () => {
+                enterOnly = search_enter_toggle.checked;
+                try {
+                    localStorage.setItem(ENTER_SEARCH_KEY, String(enterOnly));
+                } catch {
+                    // ignore error.
+                }
+            }, false);
+        }
         // Set up events
         searchicon.addEventListener('click', () => {
             searchIconClickHandler();
         }, false);
-        searchbar.addEventListener('keyup', () => {
-            searchbarKeyUpHandler();
+        searchbar.addEventListener('keyup', (e) => {
+            searchbarKeyUpHandler(e);
         }, false);
         document.addEventListener('keydown', e => {
             globalKeyHandler(e);
@@ -327,7 +347,7 @@ window.search = window.search || {};
             showSearch(true);
             searchbar.value = decodeURIComponent(
                 (url.params[URL_SEARCH_PARAM] + '').replace(/\+/g, '%20'));
-            searchbarKeyUpHandler(); // -> doSearch()
+            searchbarKeyUpHandler(null, true); // -> doSearch()
         } else {
             showSearch(false);
         }
@@ -476,7 +496,22 @@ window.search = window.search || {};
     }
 
     // Eventhandler for keyevents while the searchbar is focused
-    function searchbarKeyUpHandler() {
+    function searchbarKeyUpHandler(e, force = false) {
+        if (enterOnly && !force) {
+            const key = e && (e.key || e.keyCode);
+            const isEnter = key === 'Enter' || key === 13;
+            const searchterm = searchbar.value.trim();
+            if (!isEnter) {
+                if (searchterm === '') {
+                    searchbar.classList.remove('active');
+                    showResults(false);
+                    removeChildren(searchresults);
+                    setSearchUrlParameters('', 'replace');
+                    marker.unmark();
+                }
+                return;
+            }
+        }
         const searchterm = searchbar.value.trim();
         if (searchterm !== '') {
             searchbar.classList.add('active');
