@@ -59,6 +59,9 @@
         .searchbar-outer {
             padding-right: min(320px, 26vw);
         }
+        .searchresults-outer {
+            padding-right: min(320px, 26vw);
+        }
     }
     #pagetoc a {
         border-left: 1px solid var(--sidebar-bg);
