@@ -354,7 +354,7 @@ mark.fade-out {
 .search-enter-toggle {
     position: absolute;
     right: calc(var(--spinner-margin) + 28px);
-    top: 50%;
+    top: calc(50% + var(--searchbar-margin-block-start));
     transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
