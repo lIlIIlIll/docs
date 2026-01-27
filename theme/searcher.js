@@ -499,7 +499,8 @@ window.search = window.search || {};
     function searchbarKeyUpHandler(e, force = false) {
         if (enterOnly && !force) {
             const key = e && (e.key || e.keyCode);
-            const isEnter = key === 'Enter' || key === 13;
+            const code = e && e.code;
+            const isEnter = key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter' || key === 13;
             const searchterm = searchbar.value.trim();
             if (!isEnter) {
                 if (searchterm === '') {
@@ -508,6 +509,8 @@ window.search = window.search || {};
                     removeChildren(searchresults);
                     setSearchUrlParameters('', 'replace');
                     marker.unmark();
+                } else {
+                    showResults(false);
                 }
                 return;
             }
