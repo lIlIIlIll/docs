@@ -509,8 +509,6 @@ window.search = window.search || {};
                     removeChildren(searchresults);
                     setSearchUrlParameters('', 'replace');
                     marker.unmark();
-                } else {
-                    showResults(false);
                 }
                 return;
             }
