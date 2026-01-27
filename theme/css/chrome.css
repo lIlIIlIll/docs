@@ -349,6 +349,7 @@ mark.fade-out {
 
 .search-wrapper {
     position: relative;
+    --spinner-margin: 2px;
 }
 
 .search-enter-toggle {
