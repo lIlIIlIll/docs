@@ -54,13 +54,13 @@
     }
     @media (min-width: 1500px) {
         .content main {
-            padding-right: min(320px, 26vw);
+            padding-right: min(240px, 20vw);
         }
         .searchbar-outer {
-            padding-right: min(320px, 26vw);
+            padding-right: min(240px, 20vw);
         }
         .searchresults-outer {
-            padding-right: min(320px, 26vw);
+            padding-right: min(240px, 20vw);
         }
     }
     #pagetoc a {
