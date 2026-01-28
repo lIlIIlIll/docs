@@ -116,3 +116,15 @@ html.light .hljs-deletion {
 .blockquote-tag-caution .blockquote-tag-title::after {
   content: "注意";
 }
+
+.gitinfo,
+.gitinfo-header,
+.gitinfo-footer {
+  color: var(--icons);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.gitinfo-header {
+  display: block;
+}
