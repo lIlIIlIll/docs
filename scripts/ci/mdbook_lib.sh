@@ -4,7 +4,7 @@ set -euo pipefail
 DOCS_ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 
 log() {
-  echo "[ci] $*"
+  echo "[ci] $*" >&2
 }
 
 retry_clone() {
