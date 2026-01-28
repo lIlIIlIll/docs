@@ -324,7 +324,6 @@ jobs:
           ensure_tool_version mdbook-pagetoc "${MDBOOK_PAGETOC_VERSION}" "cargo install mdbook-pagetoc --locked --version ${MDBOOK_PAGETOC_VERSION} --force" "$force"
           mdbook --version
           mdbook-gitinfo --version
-          mdbook-pagetoc --version
       - name: Setup Pages
         if: ${{ env.SKIP_BUILD != 'true' }}
         id: pages
