@@ -116,7 +116,7 @@ ensure_tool_version() {
   fi
 
   local current
-  current="$("$cmd" --version 2>/dev/null | awk '{print $NF}')"
+  current="$($cmd --version 2>/dev/null | awk '{print $NF}')"
   current="${current#v}"
   if [[ "$current" != "$expected" ]]; then
     log "$cmd version mismatch: have $current, want $expected"
@@ -187,9 +187,14 @@ copy_assets() {
 set_book_src() {
   local book_toml="$1"
   local src="$2"
-  python3 - <<PY
+  # Pass values as argv to Python and use a quoted heredoc so the embedded Python code
+  # is not subject to shell interpolation. This avoids NameError for `src`.
+  python3 - "$book_toml" "$src" <<'PY'
 from pathlib import Path
-p = Path("${book_toml}")
+import sys
+book_toml = sys.argv[1]
+src = sys.argv[2]
+p = Path(book_toml)
 text = p.read_text()
 text = text.replace('src = "src"', f'src = "{src}"')
 p.write_text(text)
