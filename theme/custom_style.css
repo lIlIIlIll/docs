@@ -128,3 +128,17 @@ html.light .hljs-deletion {
 .gitinfo-header {
   display: block;
 }
+
+@media (orientation: portrait) and (max-width: 900px) {
+  :root {
+    --page-padding: 10px;
+  }
+
+  #pagetoc {
+    display: none;
+  }
+
+  .content {
+    padding: 0 0 40px;
+  }
+}
