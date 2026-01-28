@@ -45,6 +45,14 @@
         overflow: auto;
         z-index: 3;
     }
+    @media (min-width: 620px) {
+        html.sidebar-visible #pagetoc {
+            left: min(
+                calc(50% + var(--content-max-width) / 2 + var(--pagetoc-gap) + var(--sidebar-width) + var(--sidebar-resize-indicator-width)),
+                calc(100vw - var(--pagetoc-width) - 8px)
+            );
+        }
+    }
     @media (min-width: 1500px) {
         /* keep content centered; pagetoc floats beside it */
     }

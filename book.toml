@@ -26,6 +26,9 @@ command = "python3 scripts/table.py"
 [preprocessor._1_blockquote_admonish]
 command = "python3 scripts/blockquote_admonish.py"
 
+[preprocessor._2_example_fold]
+command = "python3 scripts/example_fold.py"
+
 [preprocessor.pagetoc]
 command = "python3 scripts/pagetoc_wrapper.py"
 renderer = ["html"]

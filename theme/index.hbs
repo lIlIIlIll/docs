@@ -349,44 +349,6 @@
                 </div>
             </div>
 
-            <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                {{#if previous}}
-                    <a rel="prev" href="{{ path_to_root }}{{previous.link}}" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
-                        {{#if (eq ../text_direction "rtl")}}
-                        <span class="fa-svg" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
-                                <polyline points="9 6 15 12 9 18"/>
-                            </svg>
-                        </span>
-                        {{else}}
-                        <span class="fa-svg" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
-                                <polyline points="15 6 9 12 15 18"/>
-                            </svg>
-                        </span>
-                        {{/if}}
-                    </a>
-                {{/if}}
-
-                {{#if next}}
-                    <a rel="next prefetch" href="{{ path_to_root }}{{next.link}}" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        {{#if (eq text_direction "rtl")}}
-                        <span class="fa-svg" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
-                                <polyline points="15 6 9 12 15 18"/>
-                            </svg>
-                        </span>
-                        {{else}}
-                        <span class="fa-svg" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
-                                <polyline points="9 6 15 12 9 18"/>
-                            </svg>
-                        </span>
-                        {{/if}}
-                    </a>
-                {{/if}}
-            </nav>
-
         </div>
 
         <template id=fa-eye>
