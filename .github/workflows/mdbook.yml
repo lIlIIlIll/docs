@@ -181,12 +181,22 @@ jobs:
         id: extsha
         run: |
           set -euo pipefail
-          RUNTIME_DEV_SHA=$(git -C ext_runtime rev-parse origin/dev)
-          STDX_DEV_SHA=$(git -C ext_stdx rev-parse origin/dev)
-          RUNTIME_MAIN_SHA=$(git -C ext_runtime rev-parse origin/main)
-          STDX_MAIN_SHA=$(git -C ext_stdx rev-parse origin/main)
-          RUNTIME_RELEASE_SHA=$(git -C ext_runtime rev-parse origin/release/1.0)
-          STDX_RELEASE_SHA=$(git -C ext_stdx rev-parse origin/release/1.0)
+          get_sha() {
+            local repo="$1"
+            local ref="$2"
+            if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+              git -C "$repo" rev-parse "$ref"
+            else
+              echo "warn: missing $repo $ref, falling back to HEAD" >&2
+              git -C "$repo" rev-parse HEAD
+            fi
+          }
+          RUNTIME_DEV_SHA=$(get_sha ext_runtime origin/dev)
+          STDX_DEV_SHA=$(get_sha ext_stdx origin/dev)
+          RUNTIME_MAIN_SHA=$(get_sha ext_runtime origin/main)
+          STDX_MAIN_SHA=$(get_sha ext_stdx origin/main)
+          RUNTIME_RELEASE_SHA=$(get_sha ext_runtime origin/release/1.0)
+          STDX_RELEASE_SHA=$(get_sha ext_stdx origin/release/1.0)
           echo "runtime_dev_sha=$RUNTIME_DEV_SHA"   >> $GITHUB_OUTPUT
           echo "stdx_dev_sha=$STDX_DEV_SHA"         >> $GITHUB_OUTPUT
           echo "runtime_main_sha=$RUNTIME_MAIN_SHA" >> $GITHUB_OUTPUT
