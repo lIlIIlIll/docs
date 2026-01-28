@@ -142,19 +142,21 @@ jobs:
             local url="$1"
             local dir="$2"
             local depth="${3:-1}"
+            local branch_hint="${4:-}"
             local attempt
             for attempt in 1 2 3; do
               echo "clone attempt $attempt: $url -> $dir"
               rm -rf "$dir"
               timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
-                clone --depth "$depth" --filter=blob:none "$url" "$dir" && return 0
+                clone --no-checkout --depth "$depth" --filter=blob:none ${branch_hint:+--branch "$branch_hint"} \
+                "$url" "$dir" && return 0
               echo "clone failed, retrying..."
               sleep 10
             done
             return 1
           }
-          retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1
-          timeout 30 git -C ext_runtime fetch --prune --tags origin dev main release/1.0 "$STD_BRANCH"
+          retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1 "${STD_BRANCH}"
+          timeout 30 git -C ext_runtime fetch --prune --tags --depth 1 origin dev main release/1.0 "$STD_BRANCH"
           ls -la ext_runtime
       - name: Clone cangjie-stdx
         run: |
@@ -163,19 +165,21 @@ jobs:
             local url="$1"
             local dir="$2"
             local depth="${3:-1}"
+            local branch_hint="${4:-}"
             local attempt
             for attempt in 1 2 3; do
               echo "clone attempt $attempt: $url -> $dir"
               rm -rf "$dir"
               timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
-                clone --depth "$depth" --filter=blob:none "$url" "$dir" && return 0
+                clone --no-checkout --depth "$depth" --filter=blob:none ${branch_hint:+--branch "$branch_hint"} \
+                "$url" "$dir" && return 0
               echo "clone failed, retrying..."
               sleep 10
             done
             return 1
           }
-          retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1
-          timeout 30 git -C ext_stdx fetch --prune --tags origin dev main release/1.0 "$STDX_BRANCH"
+          retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1 "${STDX_BRANCH}"
+          timeout 30 git -C ext_stdx fetch --prune --tags --depth 1 origin dev main release/1.0 "$STDX_BRANCH"
           ls -la ext_stdx
       - name: Get ext SHAs
         id: extsha
