@@ -5,7 +5,9 @@ import json
 import re
 
 FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
-DEPRECATED_SUP_RE = re.compile(r"<sup>\s*\\?(\\()?deprecated\\?(\\)?\s*</sup>", re.IGNORECASE)
+DEPRECATED_SUP_RE = re.compile(
+    r"<sup>\s*(?:\\?\()?deprecated(?:\\?\))?\s*</sup>", re.IGNORECASE
+)
 PLACEHOLDER_TAG_RE = re.compile(
     r"<(/?)(elementtype|v|r|t|tret|signal|string|object|argumentmatcher|uint8)>",
     re.IGNORECASE,

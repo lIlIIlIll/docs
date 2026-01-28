@@ -1,3 +1,21 @@
+function decodeHeaderText(text) {
+    let decoded = text.replace(/&amp;/g, "&");
+    decoded = decoded.replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    return decoded;
+}
+
+function normalizeHeaderText() {
+    for (const header of document.getElementsByClassName("header")) {
+        const current = header.textContent || "";
+        const decoded = decodeHeaderText(current);
+        if (decoded !== current) {
+            header.textContent = decoded;
+        }
+    }
+}
+
+normalizeHeaderText();
+
 let activeHref = location.href;
 function updatePageToc(elem = undefined) {
     let selectedPageTocElem = elem;
