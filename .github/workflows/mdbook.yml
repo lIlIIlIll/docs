@@ -154,8 +154,8 @@ jobs:
             return 1
           }
           retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1
-          git -C ext_runtime fetch --prune --tags origin dev main release/1.0 "$STD_BRANCH"
-          ls -R ext_runtime
+          timeout 30 git -C ext_runtime fetch --prune --tags origin dev main release/1.0 "$STD_BRANCH"
+          ls -la ext_runtime
       - name: Clone cangjie-stdx
         run: |
           set -euo pipefail
@@ -175,8 +175,8 @@ jobs:
             return 1
           }
           retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1
-          git -C ext_stdx fetch --prune --tags origin dev main release/1.0 "$STDX_BRANCH"
-          ls -R ext_stdx
+          timeout 30 git -C ext_stdx fetch --prune --tags origin dev main release/1.0 "$STDX_BRANCH"
+          ls -la ext_stdx
       - name: Get ext SHAs
         id: extsha
         run: |
