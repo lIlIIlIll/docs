@@ -49,8 +49,12 @@ jobs:
   # Build job
   build:
     runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
     env:
       MDBOOK_VERSION: 0.5.2
+      MDBOOK_GITINFO_VERSION: 2.0.0
+      MDBOOK_PAGETOC_VERSION: 0.3.0
       FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_rebuild || vars.FORCE_REBUILD || 'false' }}
       STD_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.std_branch || vars.STD_BRANCH || 'dev' }}
       STDX_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.stdx_branch || vars.STDX_BRANCH || 'dev' }}
@@ -106,7 +110,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: book/pr
-          key: book-pr-${{ github.ref_name }}-${{ github.run_id }}
+          key: book-pr-${{ github.ref_name }}-${{ env.PR_ID != '' && env.PR_ID || 'none' }}
           restore-keys: |
             book-pr-${{ github.ref_name }}-
       - name: Prune old PR books
@@ -135,92 +139,19 @@ jobs:
           if [[ "$pruned" == "true" ]]; then
             echo "FORCE_DEPLOY=true" >> "$GITHUB_ENV"
           fi
-      - name: Clone cangjie_runtime
+      - name: Clone ext repos
         run: |
           set -euo pipefail
-          retry_clone() {
-            local url="$1"
-            local dir="$2"
-            local depth="${3:-1}"
-            local branch_hint="${4:-}"
-            local attempt
-            for attempt in 1 2 3; do
-              echo "clone attempt $attempt: $url -> $dir"
-              rm -rf "$dir"
-              timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
-                clone --no-checkout --depth "$depth" ${branch_hint:+--branch "$branch_hint"} \
-                "$url" "$dir" && return 0
-              echo "clone failed, retrying..."
-              sleep 10
-            done
-            return 1
-          }
-          retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1 "${STD_BRANCH}"
-          timeout 30 git -C ext_runtime fetch --prune --tags --depth 1 origin dev main release/1.0 "$STD_BRANCH"
-          ensure_local_branch() {
-            local repo="$1"
-            local branch="$2"
-            if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-              git -C "$repo" branch -f "$branch" "origin/$branch"
-            fi
-          }
-          ensure_local_branch ext_runtime dev
-          ensure_local_branch ext_runtime main
-          ensure_local_branch ext_runtime "release/1.0"
-          if [[ -n "${STD_BRANCH:-}" ]]; then
-            ensure_local_branch ext_runtime "$STD_BRANCH"
-          fi
+          source scripts/ci/mdbook_lib.sh
+          clone_ext_repo https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime "${STD_BRANCH}"
+          clone_ext_repo https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx "${STDX_BRANCH}"
           ls -la ext_runtime
-      - name: Clone cangjie-stdx
-        run: |
-          set -euo pipefail
-          retry_clone() {
-            local url="$1"
-            local dir="$2"
-            local depth="${3:-1}"
-            local branch_hint="${4:-}"
-            local attempt
-            for attempt in 1 2 3; do
-              echo "clone attempt $attempt: $url -> $dir"
-              rm -rf "$dir"
-              timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
-                clone --no-checkout --depth "$depth" ${branch_hint:+--branch "$branch_hint"} \
-                "$url" "$dir" && return 0
-              echo "clone failed, retrying..."
-              sleep 10
-            done
-            return 1
-          }
-          retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1 "${STDX_BRANCH}"
-          timeout 30 git -C ext_stdx fetch --prune --tags --depth 1 origin dev main release/1.0 "$STDX_BRANCH"
-          ensure_local_branch() {
-            local repo="$1"
-            local branch="$2"
-            if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-              git -C "$repo" branch -f "$branch" "origin/$branch"
-            fi
-          }
-          ensure_local_branch ext_stdx dev
-          ensure_local_branch ext_stdx main
-          ensure_local_branch ext_stdx "release/1.0"
-          if [[ -n "${STDX_BRANCH:-}" ]]; then
-            ensure_local_branch ext_stdx "$STDX_BRANCH"
-          fi
           ls -la ext_stdx
       - name: Get ext SHAs
         id: extsha
         run: |
           set -euo pipefail
-          get_sha() {
-            local repo="$1"
-            local ref="$2"
-            if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-              git -C "$repo" rev-parse "$ref"
-            else
-              echo "warn: missing $repo $ref, falling back to HEAD" >&2
-              git -C "$repo" rev-parse HEAD
-            fi
-          }
+          source scripts/ci/mdbook_lib.sh
           RUNTIME_DEV_SHA=$(get_sha ext_runtime origin/dev)
           STDX_DEV_SHA=$(get_sha ext_stdx origin/dev)
           RUNTIME_MAIN_SHA=$(get_sha ext_runtime origin/main)
@@ -239,6 +170,15 @@ jobs:
           echo "Stdx main   : $STDX_MAIN_SHA"
           echo "Runtime rel : $RUNTIME_RELEASE_SHA"
           echo "Stdx rel    : $STDX_RELEASE_SHA"
+          mkdir -p .ext-build-cache
+          cat > .ext-build-cache/sha.txt <<EOF
+          runtime_dev_sha=$RUNTIME_DEV_SHA
+          stdx_dev_sha=$STDX_DEV_SHA
+          runtime_main_sha=$RUNTIME_MAIN_SHA
+          stdx_main_sha=$STDX_MAIN_SHA
+          runtime_release_sha=$RUNTIME_RELEASE_SHA
+          stdx_release_sha=$STDX_RELEASE_SHA
+          EOF
       - name: Check cache by SHAs
         id: cachecheck
         if: ${{ env.FORCE_REBUILD != 'true' }}
@@ -246,30 +186,47 @@ jobs:
         with:
           path: .ext-build-cache
           key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
-      - name: Skip if no upstream changes
-        if: steps.cachecheck.outputs.cache-hit == 'true' && env.BUILD_PR != 'true' && env.FORCE_DEPLOY != 'true'
+      - name: Decide skip build/deploy
+        id: decide
+        env:
+          CACHE_HIT: ${{ steps.cachecheck.outputs.cache-hit }}
         run: |
-          echo "No upstream changes. Skipping build & deploy."
-          exit 0
+          set -euo pipefail
+          skip="false"
+          cache_hit="${CACHE_HIT:-false}"
+          if [[ "${FORCE_REBUILD}" != "true" && "$cache_hit" == "true" && "${BUILD_PR}" != "true" && "${FORCE_DEPLOY}" != "true" ]]; then
+            skip="true"
+          fi
+          echo "SKIP_BUILD=$skip" >> "$GITHUB_ENV"
+          echo "skip_build=$skip" >> "$GITHUB_OUTPUT"
+          if [[ "$skip" == "true" ]]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Restore dev book output cache
         id: cache_book_dev
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/cache@v4
         with:
           path: book/dev
           key: book-dev-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}
       - name: Restore main book output cache
         id: cache_book_main
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/cache@v4
         with:
           path: book/main
           key: book-main-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
       - name: Restore release book output cache
         id: cache_book_release
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/cache@v4
         with:
           path: book/release/1.0
           key: book-release-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
       - name: Decide branch builds
+        if: ${{ env.SKIP_BUILD != 'true' }}
         run: |
           set -euo pipefail
           build_dev="true"
@@ -291,277 +248,20 @@ jobs:
           CACHE_DEV_HIT: ${{ steps.cache_book_dev.outputs.cache-hit }}
           CACHE_MAIN_HIT: ${{ steps.cache_book_main.outputs.cache-hit }}
           CACHE_RELEASE_HIT: ${{ steps.cache_book_release.outputs.cache-hit }}
-      - name: Prepare std book (dev)
-        if: ${{ env.BUILD_DEV == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          std_dev_book="$GITHUB_WORKSPACE/std_dev_book"
-          std_ref="$(pick_ref ext_runtime dev origin/dev main origin/main HEAD)"
-          git -C ext_runtime worktree add -f "$std_dev_book" "$std_ref"
-          doc_root="stdlib/doc/libs"
-          rm -rf "$std_dev_book/$doc_root/std_en"
-          rm -f "$std_dev_book/$doc_root/summary_cjnative_EN.md"
-          if [[ -f "$std_dev_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$std_dev_book/$doc_root/summary_cjnative.md" "$std_dev_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$std_dev_book/theme" "$std_dev_book/scripts"
-          cp -r theme/* "$std_dev_book/theme/"
-          cp scripts/* "$std_dev_book/scripts/"
-          cp book.toml "$std_dev_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("std_dev_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
-          p.write_text(text)
-          PY
-      - name: Prepare stdx book (dev)
-        if: ${{ env.BUILD_DEV == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          stdx_dev_book="$GITHUB_WORKSPACE/stdx_dev_book"
-          stdx_ref="$(pick_ref ext_stdx dev origin/dev main origin/main HEAD)"
-          git -C ext_stdx worktree add -f "$stdx_dev_book" "$stdx_ref"
-          doc_root="doc"
-          if [[ -f "$stdx_dev_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$stdx_dev_book/$doc_root/summary_cjnative.md" "$stdx_dev_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$stdx_dev_book/theme" "$stdx_dev_book/scripts"
-          cp -r theme/* "$stdx_dev_book/theme/"
-          cp scripts/* "$stdx_dev_book/scripts/"
-          cp book.toml "$stdx_dev_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("stdx_dev_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "doc"')
-          p.write_text(text)
-          PY
-      - name: Prepare std book (main)
-        if: ${{ env.BUILD_MAIN == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          std_main_book="$GITHUB_WORKSPACE/std_main_book"
-          std_ref="$(pick_ref ext_runtime main origin/main HEAD)"
-          git -C ext_runtime worktree add -f "$std_main_book" "$std_ref"
-          doc_root="stdlib/doc/libs"
-          rm -rf "$std_main_book/$doc_root/std_en"
-          rm -f "$std_main_book/$doc_root/summary_cjnative_EN.md"
-          if [[ -f "$std_main_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$std_main_book/$doc_root/summary_cjnative.md" "$std_main_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$std_main_book/theme" "$std_main_book/scripts"
-          cp -r theme/* "$std_main_book/theme/"
-          cp scripts/* "$std_main_book/scripts/"
-          cp book.toml "$std_main_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("std_main_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
-          p.write_text(text)
-          PY
-      - name: Prepare stdx book (main)
-        if: ${{ env.BUILD_MAIN == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          stdx_main_book="$GITHUB_WORKSPACE/stdx_main_book"
-          stdx_ref="$(pick_ref ext_stdx main origin/main HEAD)"
-          git -C ext_stdx worktree add -f "$stdx_main_book" "$stdx_ref"
-          doc_root="doc"
-          if [[ -f "$stdx_main_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$stdx_main_book/$doc_root/summary_cjnative.md" "$stdx_main_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$stdx_main_book/theme" "$stdx_main_book/scripts"
-          cp -r theme/* "$stdx_main_book/theme/"
-          cp scripts/* "$stdx_main_book/scripts/"
-          cp book.toml "$stdx_main_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("stdx_main_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "doc"')
-          p.write_text(text)
-          PY
-      - name: Prepare std book (release/1.0)
-        if: ${{ env.BUILD_RELEASE == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          std_release_book="$GITHUB_WORKSPACE/std_release_book"
-          std_ref="$(pick_ref ext_runtime release/1.0 origin/release/1.0 main origin/main HEAD)"
-          git -C ext_runtime worktree add -f "$std_release_book" "$std_ref"
-          doc_root=""
-          if [[ -d "$std_release_book/stdlib/doc/libs" ]]; then
-            doc_root="stdlib/doc/libs"
-          elif [[ -d "$std_release_book/stdlib/doc" ]]; then
-            doc_root="stdlib/doc"
-          else
-            doc_src="$(find "$std_release_book" -type f -name summary_cjnative.md -print -quit || true)"
-            if [[ -n "$doc_src" ]]; then
-              doc_root="$(dirname "${doc_src#${std_release_book}/}")"
-            else
-              doc_src="$(find "$std_release_book" -type f -name SUMMARY.md -print -quit || true)"
-              if [[ -n "$doc_src" ]]; then
-                doc_root="$(dirname "${doc_src#${std_release_book}/}")"
-              fi
-            fi
-          fi
-          if [[ -z "$doc_root" ]]; then
-            echo "stdlib doc not found in std_release_book" >&2
-            exit 1
-          fi
-          rm -rf "$std_release_book/$doc_root/std_en"
-          rm -f "$std_release_book/$doc_root/summary_cjnative_EN.md"
-          if [[ -f "$std_release_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$std_release_book/$doc_root/summary_cjnative.md" "$std_release_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$std_release_book/theme" "$std_release_book/scripts"
-          cp -r theme/* "$std_release_book/theme/"
-          cp scripts/* "$std_release_book/scripts/"
-          cp book.toml "$std_release_book/book.toml"
-          DOC_ROOT="$doc_root" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          doc_root = os.environ.get("DOC_ROOT", "").strip()
-          p = Path("std_release_book/book.toml")
-          text = p.read_text()
-          if doc_root:
-              text = text.replace('src = "src"', f'src = "{doc_root}"')
-          p.write_text(text)
-          PY
-      - name: Prepare stdx book (release/1.0)
-        if: ${{ env.BUILD_RELEASE == 'true' }}
-        run: |
-          set -euxo pipefail
-          pick_ref() {
-            local repo="$1"
-            shift
-            local ref
-            for ref in "$@"; do
-              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
-                echo "$ref"
-                return 0
-              fi
-            done
-            echo "HEAD"
-          }
-          stdx_release_book="$GITHUB_WORKSPACE/stdx_release_book"
-          stdx_ref="$(pick_ref ext_stdx release/1.0 origin/release/1.0 main origin/main HEAD)"
-          git -C ext_stdx worktree add -f "$stdx_release_book" "$stdx_ref"
-          doc_root=""
-          if [[ -d "$stdx_release_book/doc" ]]; then
-            doc_root="doc"
-          else
-            doc_src="$(find "$stdx_release_book" -type f -name summary_cjnative.md -print -quit || true)"
-            if [[ -n "$doc_src" ]]; then
-              doc_root="$(dirname "${doc_src#${stdx_release_book}/}")"
-            else
-              doc_src="$(find "$stdx_release_book" -type f -name SUMMARY.md -print -quit || true)"
-              if [[ -n "$doc_src" ]]; then
-                doc_root="$(dirname "${doc_src#${stdx_release_book}/}")"
-              fi
-            fi
-          fi
-          if [[ -z "$doc_root" ]]; then
-            echo "stdx doc not found in stdx_release_book" >&2
-            exit 1
-          fi
-          if [[ -f "$stdx_release_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$stdx_release_book/$doc_root/summary_cjnative.md" "$stdx_release_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$stdx_release_book/theme" "$stdx_release_book/scripts"
-          cp -r theme/* "$stdx_release_book/theme/"
-          cp scripts/* "$stdx_release_book/scripts/"
-          cp book.toml "$stdx_release_book/book.toml"
-          DOC_ROOT="$doc_root" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          doc_root = os.environ.get("DOC_ROOT", "").strip()
-          p = Path("stdx_release_book/book.toml")
-          text = p.read_text()
-          if doc_root:
-              text = text.replace('src = "src"', f'src = "{doc_root}"')
-          p.write_text(text)
-          PY
       - name: Checkout PR base branches
-        if: ${{ env.BUILD_PR == 'true' }}
+        if: ${{ env.SKIP_BUILD != 'true' && env.BUILD_PR == 'true' }}
         run: |
           set -euo pipefail
-          checkout_ref() {
-            local repo_dir="$1"
-            local ref="$2"
-            if git -C "$repo_dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
-              git -C "$repo_dir" checkout --detach "origin/$ref"
-            else
-              git -C "$repo_dir" checkout --detach "$ref"
-            fi
-          }
+          source scripts/ci/mdbook_lib.sh
+          unshallow_repo ext_runtime
+          unshallow_repo ext_stdx
           checkout_ref ext_runtime "$STD_BRANCH"
           checkout_ref ext_stdx "$STDX_BRANCH"
       - name: Cherry-pick PRs (custom)
-        if: ${{ env.BUILD_PR == 'true' && (env.STD_PRS != '' || env.STDX_PRS != '') }}
+        if: ${{ env.SKIP_BUILD != 'true' && env.BUILD_PR == 'true' && (env.STD_PRS != '' || env.STDX_PRS != '') }}
         run: |
           set -euo pipefail
+          source scripts/ci/mdbook_lib.sh
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
@@ -598,73 +298,8 @@ jobs:
 
           cherry_pick_prs ext_runtime "$STD_PRS"
           cherry_pick_prs ext_stdx "$STDX_PRS"
-      - name: Prepare std book (pr)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          set -euxo pipefail
-          std_pr_book="$GITHUB_WORKSPACE/std_pr_book"
-          git -C ext_runtime worktree add -f "$std_pr_book" HEAD
-          doc_root="stdlib/doc/libs"
-          rm -rf "$std_pr_book/$doc_root/std_en"
-          rm -f "$std_pr_book/$doc_root/summary_cjnative_EN.md"
-          if [[ -f "$std_pr_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$std_pr_book/$doc_root/summary_cjnative.md" "$std_pr_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$std_pr_book/theme" "$std_pr_book/scripts"
-          cp -r theme/* "$std_pr_book/theme/"
-          cp scripts/* "$std_pr_book/scripts/"
-          cp book.toml "$std_pr_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("std_pr_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
-          p.write_text(text)
-          PY
-      - name: Prepare stdx book (pr)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          set -euxo pipefail
-          stdx_pr_book="$GITHUB_WORKSPACE/stdx_pr_book"
-          git -C ext_stdx worktree add -f "$stdx_pr_book" HEAD
-          doc_root="doc"
-          if [[ -f "$stdx_pr_book/$doc_root/summary_cjnative.md" ]]; then
-            cp -f "$stdx_pr_book/$doc_root/summary_cjnative.md" "$stdx_pr_book/$doc_root/SUMMARY.md"
-          fi
-          mkdir -p "$stdx_pr_book/theme" "$stdx_pr_book/scripts"
-          cp -r theme/* "$stdx_pr_book/theme/"
-          cp scripts/* "$stdx_pr_book/scripts/"
-          cp book.toml "$stdx_pr_book/book.toml"
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("stdx_pr_book/book.toml")
-          text = p.read_text()
-          text = text.replace('src = "src"', 'src = "doc"')
-          p.write_text(text)
-          PY
-      - name: Sanity check
-        run: |
-          if [[ "${BUILD_DEV}" == "true" ]]; then
-            test -f std_dev_book/stdlib/doc/libs/SUMMARY.md
-            test -f stdx_dev_book/doc/SUMMARY.md
-          fi
-          if [[ "${BUILD_MAIN}" == "true" ]]; then
-            test -f std_main_book/stdlib/doc/libs/SUMMARY.md
-            test -f stdx_main_book/doc/SUMMARY.md
-          fi
-          if [[ "${BUILD_RELEASE}" == "true" ]]; then
-            find std_release_book -path '*/SUMMARY.md' -print -quit | grep -q SUMMARY.md
-            find stdx_release_book -path '*/SUMMARY.md' -print -quit | grep -q SUMMARY.md
-          fi
-          if [[ "${BUILD_PR}" == "true" ]]; then
-            test -f std_pr_book/stdlib/doc/libs/SUMMARY.md
-            test -f stdx_pr_book/doc/SUMMARY.md
-          fi
-          if [[ "${BUILD_DEV}" == "true" ]]; then
-            sed -n '1,10p' std_dev_book/book.toml
-            sed -n '1,10p' stdx_dev_book/scripts/table.py
-          fi
       - name: Cache cargo
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -672,221 +307,35 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             target
-          key: ${{ runner.os }}-cargo-mdbook
+          key: ${{ runner.os }}-cargo-mdbook-${{ env.MDBOOK_VERSION }}-${{ env.MDBOOK_PAGETOC_VERSION }}-${{ env.MDBOOK_GITINFO_VERSION }}
           restore-keys: |
-            ${{ runner.os }}-cargo-mdbook
+            ${{ runner.os }}-cargo-mdbook-
       - name: Install Rust (for cargo)
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: dtolnay/rust-toolchain@stable
-      - name: Install mdBook (pinned)
-        run: |
-          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook >/dev/null; then
-            cargo install --locked mdbook --version ${MDBOOK_VERSION} --force
-          fi
-          mdbook --version
-      - name: Install mdbook-gitinfo (pinned)
-        run: |
-          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook-gitinfo >/dev/null; then
-            cargo install --locked mdbook-gitinfo --version 2.0.0 --force
-          fi
-          mdbook-gitinfo --version
-      - name: Install mdbook-pagetoc(if needed)
-        shell: bash
-        env:
-          MDBOOK_PAGETOC_VERSION: "0.3.0"
+      - name: Install mdBook tooling
+        if: ${{ env.SKIP_BUILD != 'true' }}
         run: |
           set -euo pipefail
-          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook-pagetoc >/dev/null; then
-            echo "mdbook-pagetoc not found. Installing..."
-            cargo install mdbook-pagetoc --locked --version "$MDBOOK_PAGETOC_VERSION" --force
-          fi
+          source scripts/ci/mdbook_lib.sh
+          force="${FORCE_REBUILD}"
+          ensure_tool_version mdbook "${MDBOOK_VERSION}" "cargo install --locked mdbook --version ${MDBOOK_VERSION} --force" "$force"
+          ensure_tool_version mdbook-gitinfo "${MDBOOK_GITINFO_VERSION}" "cargo install --locked mdbook-gitinfo --version ${MDBOOK_GITINFO_VERSION} --force" "$force"
+          ensure_tool_version mdbook-pagetoc "${MDBOOK_PAGETOC_VERSION}" "cargo install mdbook-pagetoc --locked --version ${MDBOOK_PAGETOC_VERSION} --force" "$force"
+          mdbook --version
+          mdbook-gitinfo --version
+          mdbook-pagetoc --version
       - name: Setup Pages
+        if: ${{ env.SKIP_BUILD != 'true' }}
         id: pages
         uses: actions/configure-pages@v5
-      - name: Print mdBook env & where is book.toml
+      - name: Build books
+        if: ${{ env.SKIP_BUILD != 'true' }}
         run: |
           set -euxo pipefail
-          mdbook -V
-          echo "WORKSPACE = $GITHUB_WORKSPACE"
-          echo "--- repo root ---"
-          ls -la
-          echo "--- show book.toml (if any) ---"
-          sed -n '1,120p' book.toml || true
-      - name: Build std (dev)
-        if: ${{ env.BUILD_DEV == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd std_dev_book
-          BASE_TITLE="Cangjie Std API (dev)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$DEV_STD_OUT_DIR"
-          test -f "$DEV_STD_OUT_DIR/index.html"
-      - name: Build stdx (dev)
-        if: ${{ env.BUILD_DEV == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd stdx_dev_book
-          BASE_TITLE="Cangjie Stdx API (dev)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$DEV_STDX_OUT_DIR"
-          test -f "$DEV_STDX_OUT_DIR/index.html"
-      - name: Build std (main)
-        if: ${{ env.BUILD_MAIN == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd std_main_book
-          BASE_TITLE="Cangjie Std API (main)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$MAIN_STD_OUT_DIR"
-          test -f "$MAIN_STD_OUT_DIR/index.html"
-      - name: Build stdx (main)
-        if: ${{ env.BUILD_MAIN == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd stdx_main_book
-          BASE_TITLE="Cangjie Stdx API (main)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$MAIN_STDX_OUT_DIR"
-          test -f "$MAIN_STDX_OUT_DIR/index.html"
-      - name: Build std (release/1.0)
-        if: ${{ env.BUILD_RELEASE == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd std_release_book
-          BASE_TITLE="Cangjie Std API (release/1.0)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$RELEASE_STD_OUT_DIR"
-          test -f "$RELEASE_STD_OUT_DIR/index.html"
-      - name: Build stdx (release/1.0)
-        if: ${{ env.BUILD_RELEASE == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd stdx_release_book
-          BASE_TITLE="Cangjie Stdx API (release/1.0)"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$RELEASE_STDX_OUT_DIR"
-          test -f "$RELEASE_STDX_OUT_DIR/index.html"
-      - name: Build std (pr)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd std_pr_book
-          BASE_TITLE="Cangjie Std API (pr ${PR_ID})"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$PR_STD_OUT_DIR"
-          test -f "$PR_STD_OUT_DIR/index.html"
-      - name: Build stdx (pr)
-        if: ${{ env.BUILD_PR == 'true' }}
-        run: |
-          set -euxo pipefail
-          cd stdx_pr_book
-          BASE_TITLE="Cangjie Stdx API (pr ${PR_ID})"
-          TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")
-          MDBOOK_BOOK__TITLE="$BASE_TITLE $TS" mdbook build --dest-dir "$PR_STDX_OUT_DIR"
-          test -f "$PR_STDX_OUT_DIR/index.html"
-      - name: Write redirects and stamps
-        run: |
-          set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/book"
-          cat > "$GITHUB_WORKSPACE/book/index.html" <<'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./dev/std/">
-              <script>location.replace("./dev/std/");</script>
-              <title>Redirecting…</title>
-            </head>
-            <body>
-              <a href="./dev/std/">Go to dev docs</a>
-            </body>
-          </html>
-          EOF
-
-          mkdir -p "$GITHUB_WORKSPACE/book/dev" "$GITHUB_WORKSPACE/book/main"
-          cat > "$GITHUB_WORKSPACE/book/dev/index.html" <<'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./std/">
-              <script>location.replace("./std/");</script>
-              <title>Redirecting…</title>
-            </head>
-            <body>
-              <a href="./std/">Go to std docs</a>
-            </body>
-          </html>
-          EOF
-
-          cat > "$GITHUB_WORKSPACE/book/main/index.html" <<'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./std/">
-              <script>location.replace("./std/");</script>
-              <title>Redirecting…</title>
-            </head>
-            <body>
-              <a href="./std/">Go to std docs</a>
-            </body>
-          </html>
-          EOF
-
-          mkdir -p "$GITHUB_WORKSPACE/book/release/1.0"
-          cat > "$GITHUB_WORKSPACE/book/release/1.0/index.html" <<'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./std/">
-              <script>location.replace("./std/");</script>
-              <title>Redirecting…</title>
-            </head>
-            <body>
-              <a href="./std/">Go to std docs</a>
-            </body>
-          </html>
-          EOF
-
-          if [[ "${BUILD_PR}" == "true" ]]; then
-          mkdir -p "$PR_OUT_ROOT"
-          cat > "$PR_OUT_ROOT/index.html" <<'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=./std/">
-              <script>location.replace("./std/");</script>
-              <title>Redirecting…</title>
-            </head>
-            <body>
-              <a href="./std/">Go to std docs</a>
-            </body>
-          </html>
-          EOF
-          date +%s > "$PR_OUT_ROOT/.stamp"
-          fi
-      - name: Assert book exists
-        run: |
-          set -euxo pipefail
-          test -d "$GITHUB_WORKSPACE/book"
-          test -f "$DEV_STD_OUT_DIR/index.html" || (echo "dev std index.html missing" && exit 2)
-          test -f "$DEV_STDX_OUT_DIR/index.html" || (echo "dev stdx index.html missing" && exit 2)
-          test -f "$MAIN_STD_OUT_DIR/index.html" || (echo "main std index.html missing" && exit 2)
-          test -f "$MAIN_STDX_OUT_DIR/index.html" || (echo "main stdx index.html missing" && exit 2)
-          test -f "$RELEASE_STD_OUT_DIR/index.html" || (echo "release std index.html missing" && exit 2)
-          test -f "$RELEASE_STDX_OUT_DIR/index.html" || (echo "release stdx index.html missing" && exit 2)
-          grep -nE 'pagetoc\.(js|css)' "$DEV_STD_OUT_DIR/index.html" || echo '未引入 pagetoc 资源'
-          find book -path '*/theme/pagetoc.*' -print || echo 'theme/pagetoc.* missing'
-          grep -nE 'class="pagetoc|id="pagetoc' "$DEV_STD_OUT_DIR/index.html" || echo '页面里没有 pagetoc 容器（JS 可能没运行）'
-          if [[ "${BUILD_PR}" == "true" ]]; then
-            test -f "$PR_STD_OUT_DIR/index.html" || (echo "pr std index.html missing" && exit 2)
-            test -f "$PR_STDX_OUT_DIR/index.html" || (echo "pr stdx index.html missing" && exit 2)
-            test -f "$PR_OUT_ROOT/.stamp" || (echo "pr stamp missing" && exit 2)
-          fi
-          find book -maxdepth 5 -type f -name 'toc.js' -print
+          bash scripts/ci/build_books.sh
       - name: Upload artifact
+        if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./book
@@ -897,6 +346,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    if: ${{ needs.build.outputs.should_deploy == 'true' }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
