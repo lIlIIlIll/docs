@@ -16,8 +16,8 @@ if len(sys.argv) >= 2 and sys.argv[1] == "supports":
     sys.exit(0)
 
 
-EXAMPLE_RE = re.compile(r"^\s*(?P<head>示例|Example)\s*[:：]\s*(?P<rest>.*)$")
-OUTPUT_RE = re.compile(r"^\s*(?P<head>运行结果|输出结果|输出|Output)\s*[:：]\s*$")
+EXAMPLE_RE = re.compile(r"^(?P<indent>\s*)(?P<head>示例|Example)\s*[:：]\s*(?P<rest>.*)$")
+OUTPUT_RE = re.compile(r"^(?P<indent>\s*)(?P<head>运行结果|输出结果|输出|Output)\s*[:：]\s*$")
 HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
@@ -29,15 +29,18 @@ def convert_example_fold(text: str) -> str:
     in_fence = False
     fence_marker = None
 
-    def open_example(summary: str) -> None:
-        out.append('<details class="example-fold">')
-        out.append(f"<summary>{summary}</summary>")
-        out.append('<div class="example-fold-body">')
+    def open_example(summary: str, indent: str) -> None:
+        out.append(f'{indent}<details class="example-fold">')
+        out.append(f"{indent}<summary>{summary}</summary>")
+        out.append(f'{indent}<div class="example-fold-body">')
 
-    def close_example() -> None:
-        out.append("</div>")
-        out.append("</details>")
+    def close_example(indent: str) -> None:
+        out.append(f"{indent}</div>")
+        out.append(f"{indent}</details>")
         out.append("")
+        return
+
+    current_indent = ""
 
     for line in lines:
         fence_match = FENCE_RE.match(line)
@@ -53,17 +56,18 @@ def convert_example_fold(text: str) -> str:
             example_match = EXAMPLE_RE.match(line)
             if example_match:
                 if in_example:
-                    close_example()
+                    close_example(current_indent)
                     in_example = False
                 head = example_match.group("head")
                 rest = (example_match.group("rest") or "").strip()
                 summary = f"{head}：{rest}" if rest else head
-                open_example(summary)
+                current_indent = example_match.group("indent") or ""
+                open_example(summary, current_indent)
                 in_example = True
                 continue
 
             if in_example and HEADING_RE.match(line):
-                close_example()
+                close_example(current_indent)
                 in_example = False
                 out.append(line)
                 continue
@@ -71,13 +75,13 @@ def convert_example_fold(text: str) -> str:
             if in_example:
                 output_match = OUTPUT_RE.match(line)
                 if output_match:
-                    out.append(f'<div class="example-fold-output-label">{output_match.group("head")}</div>')
+                    out.append(f'{output_match.group("indent") or ""}<div class="example-fold-output-label">{output_match.group("head")}</div>')
                     continue
 
         out.append(line)
 
     if in_example:
-        close_example()
+        close_example(current_indent)
 
     return "\n".join(out)
 
