@@ -59,6 +59,8 @@ jobs:
       STDX_PRS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.stdx_prs || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Prepare cache dirs
         run: |
           set -euxo pipefail
@@ -457,6 +459,12 @@ jobs:
             cargo install --locked mdbook --version ${MDBOOK_VERSION} --force
           fi
           mdbook --version
+      - name: Install mdbook-gitinfo (pinned)
+        run: |
+          if [[ "${FORCE_REBUILD}" == "true" ]] || ! command -v mdbook-gitinfo >/dev/null; then
+            cargo install --locked mdbook-gitinfo --version 2.0.0 --force
+          fi
+          mdbook-gitinfo --version
       - name: Install mdbook-pagetoc(if needed)
         shell: bash
         env:
