@@ -265,8 +265,21 @@ jobs:
         if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           std_dev_book="$GITHUB_WORKSPACE/std_dev_book"
-          git -C ext_runtime worktree add -f "$std_dev_book" origin/dev
+          std_ref="$(pick_ref ext_runtime origin/dev origin/main HEAD)"
+          git -C ext_runtime worktree add -f "$std_dev_book" "$std_ref"
           doc_root="stdlib/doc/libs"
           rm -rf "$std_dev_book/$doc_root/std_en"
           rm -f "$std_dev_book/$doc_root/summary_cjnative_EN.md"
@@ -288,8 +301,21 @@ jobs:
         if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           stdx_dev_book="$GITHUB_WORKSPACE/stdx_dev_book"
-          git -C ext_stdx worktree add -f "$stdx_dev_book" origin/dev
+          stdx_ref="$(pick_ref ext_stdx origin/dev origin/main HEAD)"
+          git -C ext_stdx worktree add -f "$stdx_dev_book" "$stdx_ref"
           doc_root="doc"
           if [[ -f "$stdx_dev_book/$doc_root/summary_cjnative.md" ]]; then
             cp -f "$stdx_dev_book/$doc_root/summary_cjnative.md" "$stdx_dev_book/$doc_root/SUMMARY.md"
@@ -309,8 +335,21 @@ jobs:
         if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           std_main_book="$GITHUB_WORKSPACE/std_main_book"
-          git -C ext_runtime worktree add -f "$std_main_book" origin/main
+          std_ref="$(pick_ref ext_runtime origin/main HEAD)"
+          git -C ext_runtime worktree add -f "$std_main_book" "$std_ref"
           doc_root="stdlib/doc/libs"
           rm -rf "$std_main_book/$doc_root/std_en"
           rm -f "$std_main_book/$doc_root/summary_cjnative_EN.md"
@@ -332,8 +371,21 @@ jobs:
         if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           stdx_main_book="$GITHUB_WORKSPACE/stdx_main_book"
-          git -C ext_stdx worktree add -f "$stdx_main_book" origin/main
+          stdx_ref="$(pick_ref ext_stdx origin/main HEAD)"
+          git -C ext_stdx worktree add -f "$stdx_main_book" "$stdx_ref"
           doc_root="doc"
           if [[ -f "$stdx_main_book/$doc_root/summary_cjnative.md" ]]; then
             cp -f "$stdx_main_book/$doc_root/summary_cjnative.md" "$stdx_main_book/$doc_root/SUMMARY.md"
@@ -353,8 +405,21 @@ jobs:
         if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           std_release_book="$GITHUB_WORKSPACE/std_release_book"
-          git -C ext_runtime worktree add -f "$std_release_book" origin/release/1.0
+          std_ref="$(pick_ref ext_runtime origin/release/1.0 origin/main HEAD)"
+          git -C ext_runtime worktree add -f "$std_release_book" "$std_ref"
           doc_root=""
           if [[ -d "$std_release_book/stdlib/doc/libs" ]]; then
             doc_root="stdlib/doc/libs"
@@ -398,8 +463,21 @@ jobs:
         if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
+          pick_ref() {
+            local repo="$1"
+            shift
+            local ref
+            for ref in "$@"; do
+              if git -C "$repo" rev-parse --verify "$ref" >/dev/null 2>&1; then
+                echo "$ref"
+                return 0
+              fi
+            done
+            echo "HEAD"
+          }
           stdx_release_book="$GITHUB_WORKSPACE/stdx_release_book"
-          git -C ext_stdx worktree add -f "$stdx_release_book" origin/release/1.0
+          stdx_ref="$(pick_ref ext_stdx origin/release/1.0 origin/main HEAD)"
+          git -C ext_stdx worktree add -f "$stdx_release_book" "$stdx_ref"
           doc_root=""
           if [[ -d "$stdx_release_book/doc" ]]; then
             doc_root="doc"
