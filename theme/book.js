@@ -344,6 +344,89 @@ aria-label="Show hidden lines"></button>';
     });
 })();
 
+(function enhanceGitInfo() {
+    function applyGitInfo() {
+        const header = document.querySelector('.gitinfo-header');
+        if (!header) {
+            return;
+        }
+        const text = header.textContent || '';
+        const match = text.match(/提交：([0-9a-fA-F]{7,40})/);
+        if (!match) {
+            return;
+        }
+        const full = match[1];
+        const short = full.slice(0, 7);
+        const escaped = full.replace(/"/g, '&quot;');
+        const html = text.replace(`提交：${full}`, `提交：<button class="gitinfo-hash" data-full="${escaped}" title="${escaped}">${short}</button>`);
+        header.innerHTML = html;
+        const btn = header.querySelector('.gitinfo-hash');
+        if (!btn) {
+            return;
+        }
+        btn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(full);
+                btn.classList.add('copied');
+                window.setTimeout(() => btn.classList.remove('copied'), 1200);
+            } catch (err) {
+                // ignore clipboard errors
+            }
+        }, false);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyGitInfo);
+    } else {
+        applyGitInfo();
+    }
+})();
+
+(function exampleFoldPreference() {
+    const toggle = document.getElementById('mdbook-example-toggle');
+    if (!toggle) {
+        return;
+    }
+    const STORAGE_KEY = 'mdbook-example-open';
+
+    function getSaved() {
+        try {
+            return localStorage.getItem(STORAGE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    }
+
+    function setSaved(val) {
+        try {
+            localStorage.setItem(STORAGE_KEY, val ? 'true' : 'false');
+        } catch {
+            // ignore error.
+        }
+    }
+
+    function apply(open, store = true) {
+        document.querySelectorAll('details.example-fold').forEach((el) => {
+            if (open) {
+                el.setAttribute('open', '');
+            } else {
+                el.removeAttribute('open');
+            }
+        });
+        toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+        if (store) {
+            setSaved(open);
+        }
+    }
+
+    apply(getSaved(), false);
+
+    toggle.addEventListener('click', () => {
+        const next = toggle.getAttribute('aria-pressed') !== 'true';
+        apply(next);
+    }, false);
+})();
+
 (function themes() {
     const html = document.querySelector('html');
     const themeToggleButton = document.getElementById('mdbook-theme-toggle');

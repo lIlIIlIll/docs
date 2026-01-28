@@ -29,6 +29,7 @@ window.search = window.search || {};
         searchresults_header = document.getElementById('mdbook-searchresults-header'),
         searchicon = document.getElementById('mdbook-search-toggle'),
         search_enter_toggle = document.getElementById('mdbook-search-enter-toggle'),
+        search_paused = document.getElementById('mdbook-search-paused'),
         content = document.getElementById('mdbook-content'),
 
         // SVG text elements don't render if inside a <mark> tag.
@@ -65,6 +66,15 @@ window.search = window.search || {};
 
     function hasFocus() {
         return searchbar === document.activeElement;
+    }
+
+    function updateSearchPaused() {
+        if (!search_paused) {
+            return;
+        }
+        const active = enterOnly || searchbar_outer.classList.contains('enter-only');
+        const hasInput = searchbar.value.trim() !== '';
+        search_paused.classList.toggle('hidden', !(active && hasInput));
     }
 
     function removeChildren(elem) {
@@ -304,14 +314,33 @@ window.search = window.search || {};
                 } catch {
                     // ignore error.
                 }
+                updateSearchPaused();
             }, false);
         }
         // Set up events
         searchicon.addEventListener('click', () => {
             searchIconClickHandler();
         }, false);
+        let searchDebounceTimer = null;
+        const SEARCH_DEBOUNCE_MS = 150;
         searchbar.addEventListener('keyup', (e) => {
-            searchbarKeyUpHandler(e);
+            const enterOnlyActive = enterOnly || searchbar_outer.classList.contains('enter-only');
+            const key = e && (e.key || e.keyCode || e.which);
+            const code = e && e.code;
+            const isEnter = key === 'Enter' || key === 'NumpadEnter' ||
+                code === 'Enter' || code === 'NumpadEnter' || key === 13;
+            if (enterOnlyActive || isEnter) {
+                searchbarKeyUpHandler(e);
+                updateSearchPaused();
+                return;
+            }
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+            }
+            searchDebounceTimer = setTimeout(() => {
+                searchbarKeyUpHandler(null);
+                updateSearchPaused();
+            }, SEARCH_DEBOUNCE_MS);
         }, false);
         document.addEventListener('keydown', e => {
             globalKeyHandler(e);
@@ -533,6 +562,7 @@ window.search = window.search || {};
 
         // Remove marks
         marker.unmark();
+        updateSearchPaused();
     }
 
     // Update current url with ?URL_SEARCH_PARAM= parameter, remove ?URL_MARK_PARAM and

@@ -78,6 +78,7 @@ if (document.getElementsByClassName("header").length <= 1) {
         const pagetoc = document.getElementById("pagetoc");
         const links = [];
         const levels = [];
+        const html = document.documentElement;
 
         function levelFromTag(tagName) {
             const m = /^H(\d+)$/.exec(tagName);
@@ -119,12 +120,15 @@ if (document.getElementsByClassName("header").length <= 1) {
             const tagName = header.parentElement.tagName;
             link.classList.add("pagetoc-" + tagName);
             pagetoc.appendChild(link);
-            link.onclick = () => updatePageToc(link);
+            link.onclick = () => {
+                updatePageToc(link);
+                html.classList.remove("pagetoc-open");
+            };
 
             links.push(link);
             levels.push(levelFromTag(tagName));
 
-            // Add toggle for H2 headings to collapse their children
+            // Add toggle for H2 headings to collapse their children (may be removed if no children)
             if (tagName === "H2") {
                 const toggle = document.createElement("span");
                 toggle.className = "pagetoc-toggle";
@@ -142,13 +146,76 @@ if (document.getElementsByClassName("header").length <= 1) {
                 link.prepend(toggle);
             }
         }
+        // Remove toggles for H2 headings without children
+        for (let i = 0; i < links.length; i++) {
+            if (levels[i] !== 2) {
+                continue;
+            }
+            let hasChild = false;
+            for (let j = i + 1; j < links.length; j++) {
+                if (levels[j] <= 2) {
+                    break;
+                }
+                if (levels[j] > 2) {
+                    hasChild = true;
+                    break;
+                }
+            }
+            if (!hasChild) {
+                links[i].classList.add("pagetoc-no-children");
+                const toggle = links[i].querySelector(".pagetoc-toggle");
+                if (toggle) {
+                    toggle.remove();
+                }
+                links[i].classList.remove("pagetoc-collapsed");
+            }
+        }
         updatePageToc();
 
         // Ensure active section is visible after initial render
         const activeIdx = links.findIndex((link) => link.classList.contains("active"));
         if (activeIdx !== -1) {
             expandForActive(activeIdx);
+            const activeLink = links[activeIdx];
+            if (activeLink) {
+                const top = activeLink.offsetTop - pagetoc.clientHeight / 3;
+                pagetoc.scrollTop = Math.max(0, top);
+            }
         }
+
+        function ensureMobileControls() {
+            if (!pagetoc || document.getElementById("pagetoc-mobile-toggle")) {
+                return;
+            }
+            const btn = document.createElement("button");
+            btn.id = "pagetoc-mobile-toggle";
+            btn.className = "pagetoc-fab";
+            btn.type = "button";
+            btn.textContent = "目录";
+            btn.setAttribute("aria-controls", "pagetoc");
+
+            const scrim = document.createElement("div");
+            scrim.id = "pagetoc-scrim";
+            scrim.className = "pagetoc-scrim";
+
+            const toggle = (force) => {
+                const next = typeof force === "boolean" ? force : !html.classList.contains("pagetoc-open");
+                html.classList.toggle("pagetoc-open", next);
+            };
+
+            btn.addEventListener("click", () => toggle(), false);
+            scrim.addEventListener("click", () => toggle(false), false);
+            window.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") {
+                    toggle(false);
+                }
+            }, false);
+
+            document.body.appendChild(scrim);
+            document.body.appendChild(btn);
+        }
+
+        ensureMobileControls();
     });
 
     // Update page table of contents selected heading on scroll
@@ -185,6 +252,13 @@ if (document.getElementsByClassName("header").length <= 1) {
                         break;
                     }
                 }
+            }
+        }
+        if (document.documentElement.classList.contains("pagetoc-open")) {
+            const activeLink = items[activeIdx];
+            if (activeLink) {
+                const top = activeLink.offsetTop - pagetoc.clientHeight / 3;
+                pagetoc.scrollTop = Math.max(0, top);
             }
         }
     });

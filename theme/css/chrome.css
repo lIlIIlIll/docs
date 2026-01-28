@@ -76,6 +76,9 @@ html.sidebar-visible #mdbook-menu-bar {
     padding: 0;
     color: inherit;
 }
+.icon-button[aria-pressed="true"] {
+    color: var(--sidebar-active);
+}
 .icon-button .fa-svg {
     margin: 0;
 }
@@ -442,6 +445,15 @@ mark.fade-out {
     color: var(--searchresults-header-fg);
 }
 
+.search-paused {
+    margin-inline-start: auto;
+    margin-inline-end: auto;
+    max-width: var(--content-max-width);
+    padding: 6px 5px 0;
+    font-size: 0.85em;
+    color: var(--icons);
+}
+
 .searchresults-outer {
     margin-inline-start: auto;
     margin-inline-end: auto;
@@ -471,8 +483,12 @@ ul#mdbook-searchresults span.teaser {
     font-size: 0.8em;
 }
 ul#mdbook-searchresults span.teaser em {
-    font-weight: bold;
+    font-weight: 700;
     font-style: normal;
+    color: var(--fg);
+    background: color-mix(in srgb, var(--links) 18%, transparent);
+    border-radius: 3px;
+    padding: 0 2px;
 }
 
 /* Sidebar */

@@ -35,7 +35,7 @@
         --pagetoc-max-width: min(320px, 26vw);
         --pagetoc-available: max(0px, calc((100vw - var(--content-max-width)) / 2 - var(--pagetoc-gap)));
         position: fixed;
-        top: calc(var(--menu-bar-height) + 12px);
+        top: calc(var(--menu-bar-height) + 50px);
         left: calc(50% + var(--content-max-width) / 2 + var(--pagetoc-gap));
         /* adjust TOC width */
         width: min(var(--pagetoc-max-width), var(--pagetoc-available));
@@ -59,12 +59,12 @@
         /* keep content centered; pagetoc floats beside it */
     }
     #pagetoc a {
-        border-left: 1px solid var(--sidebar-bg);
+        border-left: 2px solid transparent;
         color: var(--fg) !important;
         display: block;
         padding-bottom: 5px;
         padding-top: 5px;
-        padding-left: 10px;
+        padding-left: 12px;
         text-align: left;
         text-decoration: none;
     }
@@ -74,6 +74,9 @@
         margin-right: 6px;
         transform: rotate(90deg);
         transition: transform 0.2s ease;
+    }
+    #pagetoc .pagetoc-no-children .pagetoc-toggle {
+        display: none;
     }
     #pagetoc .pagetoc-collapsed .pagetoc-toggle {
         transform: rotate(0deg);
@@ -87,17 +90,70 @@
         color: var(--sidebar-fg) !important;
     }
     #pagetoc .active {
+        border-left-color: var(--sidebar-active);
         background: var(--sidebar-bg);
         color: var(--sidebar-fg);
     }
     #pagetoc .pagetoc-H2 {
-        padding-left: 20px;
+        padding-left: 16px;
     }
     #pagetoc .pagetoc-H3 {
-        padding-left: 40px;
+        padding-left: 32px;
     }
     #pagetoc .pagetoc-H4 {
-        padding-left: 60px;
+        padding-left: 48px;
+    }
+
+    .pagetoc-fab {
+        position: fixed;
+        right: 14px;
+        bottom: 20px;
+        z-index: 6;
+        border: 1px solid var(--theme-popup-border);
+        background: var(--theme-popup-bg);
+        color: var(--fg);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.9em;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        display: none;
+    }
+
+    .pagetoc-scrim {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.25);
+        z-index: 5;
+        display: none;
+    }
+
+    @media (max-width: 900px) {
+        .pagetoc-fab {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #pagetoc {
+            right: 12px;
+            left: auto;
+            width: min(84vw, 360px);
+            max-height: 70vh;
+            height: auto;
+            background: var(--bg);
+            border: 1px solid var(--theme-popup-border);
+            border-radius: 12px;
+            padding: 6px 4px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+            transform: translateX(120%);
+            transition: transform 0.2s ease;
+        }
+        html.pagetoc-open #pagetoc {
+            transform: translateX(0);
+        }
+        html.pagetoc-open .pagetoc-scrim {
+            display: block;
+        }
     }
 }
 

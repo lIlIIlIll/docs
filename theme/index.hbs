@@ -188,6 +188,14 @@
                                 </svg>
                             </span>
                         </button>
+                        <button id="mdbook-example-toggle" class="icon-button" type="button" title="默认展开示例" aria-label="默认展开示例" aria-pressed="false">
+                            <span class="fa-svg" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
+                                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                                    <polyline points="8 10 12 14 16 10"/>
+                                </svg>
+                            </span>
+                        </button>
                         <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
                             <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
@@ -282,6 +290,7 @@
                             </button>
                         </div>
                     </form>
+                    <div id="mdbook-search-paused" class="search-paused hidden" aria-live="polite">已暂停，按回车搜索</div>
                     <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
                         <div id="mdbook-searchresults-header" class="searchresults-header"></div>
                         <ul id="mdbook-searchresults">

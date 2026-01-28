@@ -129,13 +129,28 @@ html.light .hljs-deletion {
   display: block;
 }
 
+.gitinfo-hash {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--theme-popup-border);
+  background: var(--theme-popup-bg);
+  color: var(--fg);
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.gitinfo-hash.copied::after {
+  content: "已复制";
+  font-size: 0.8em;
+  color: var(--icons);
+}
+
 @media (orientation: portrait) and (max-width: 900px) {
   :root {
     --page-padding: 10px;
-  }
-
-  #pagetoc {
-    display: none;
   }
 
   .content {
