@@ -5,11 +5,13 @@ import json
 import re
 
 FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
+DEPRECATED_SUP_RE = re.compile(r"<sup>\s*\\?(\\()?deprecated\\?(\\)?\s*</sup>", re.IGNORECASE)
 PLACEHOLDER_TAG_RE = re.compile(
-    r"<(/?)(elementtype|v|r|t|tret|signal|string|object|argumentmatcher|sup|uint8)>",
+    r"<(/?)(elementtype|v|r|t|tret|signal|string|object|argumentmatcher|uint8)>",
     re.IGNORECASE,
 )
 INLINE_GENERIC_RE = re.compile(r"(?P<prefix>[\w\]\)\.>])<(?P<tag>[A-Za-z][A-Za-z0-9_]*)>")
+DIGIT_TAG_RE = re.compile(r"<(/?)([A-Za-z_]*\d+[A-Za-z0-9_]*)>")
 
 
 def escape_placeholders(text: str) -> str:
@@ -29,8 +31,10 @@ def escape_placeholders(text: str) -> str:
                 in_fence = False
 
         if not in_fence:
+            line = DEPRECATED_SUP_RE.sub(r'<span class="deprecated-sup">(deprecated)</span>', line)
             line = PLACEHOLDER_TAG_RE.sub(r"&lt;\1\2&gt;", line)
             line = INLINE_GENERIC_RE.sub(r"\g<prefix>&lt;\g<tag>&gt;", line)
+            line = DIGIT_TAG_RE.sub(r"&lt;\1\2&gt;", line)
 
         out.append(line)
 

@@ -148,6 +148,12 @@ html.light .hljs-deletion {
   color: var(--icons);
 }
 
+.deprecated-sup {
+  vertical-align: super;
+  font-size: 0.75em;
+  line-height: 1;
+}
+
 @media (orientation: portrait) and (max-width: 900px) {
   :root {
     --page-padding: 10px;
