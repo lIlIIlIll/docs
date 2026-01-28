@@ -137,12 +137,44 @@ jobs:
           fi
       - name: Clone cangjie_runtime
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime
+          set -euo pipefail
+          retry_clone() {
+            local url="$1"
+            local dir="$2"
+            local depth="${3:-1}"
+            local attempt
+            for attempt in 1 2 3; do
+              echo "clone attempt $attempt: $url -> $dir"
+              rm -rf "$dir"
+              timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+                clone --depth "$depth" --filter=blob:none "$url" "$dir" && return 0
+              echo "clone failed, retrying..."
+              sleep 10
+            done
+            return 1
+          }
+          retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1
           git -C ext_runtime fetch --prune --tags origin dev main release/1.0 "$STD_BRANCH"
           ls -R ext_runtime
       - name: Clone cangjie-stdx
         run: |
-          git clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx
+          set -euo pipefail
+          retry_clone() {
+            local url="$1"
+            local dir="$2"
+            local depth="${3:-1}"
+            local attempt
+            for attempt in 1 2 3; do
+              echo "clone attempt $attempt: $url -> $dir"
+              rm -rf "$dir"
+              timeout 30 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+                clone --depth "$depth" --filter=blob:none "$url" "$dir" && return 0
+              echo "clone failed, retrying..."
+              sleep 10
+            done
+            return 1
+          }
+          retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1
           git -C ext_stdx fetch --prune --tags origin dev main release/1.0 "$STDX_BRANCH"
           ls -R ext_stdx
       - name: Get ext SHAs
@@ -342,11 +374,14 @@ jobs:
           cp -r theme/* "$std_release_book/theme/"
           cp scripts/* "$std_release_book/scripts/"
           cp book.toml "$std_release_book/book.toml"
-          python3 - <<PY
+          DOC_ROOT="$doc_root" python3 - <<'PY'
+          import os
           from pathlib import Path
+          doc_root = os.environ.get("DOC_ROOT", "").strip()
           p = Path("std_release_book/book.toml")
           text = p.read_text()
-          text = text.replace('src = "src"', f'src = "{doc_root}"')
+          if doc_root:
+              text = text.replace('src = "src"', f'src = "{doc_root}"')
           p.write_text(text)
           PY
       - name: Prepare stdx book (release/1.0)
@@ -380,11 +415,14 @@ jobs:
           cp -r theme/* "$stdx_release_book/theme/"
           cp scripts/* "$stdx_release_book/scripts/"
           cp book.toml "$stdx_release_book/book.toml"
-          python3 - <<PY
+          DOC_ROOT="$doc_root" python3 - <<'PY'
+          import os
           from pathlib import Path
+          doc_root = os.environ.get("DOC_ROOT", "").strip()
           p = Path("stdx_release_book/book.toml")
           text = p.read_text()
-          text = text.replace('src = "src"', f'src = "{doc_root}"')
+          if doc_root:
+              text = text.replace('src = "src"', f'src = "{doc_root}"')
           p.write_text(text)
           PY
       - name: Checkout PR base branches
