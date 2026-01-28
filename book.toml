@@ -33,14 +33,12 @@ command = "python3 scripts/example_fold.py"
 command = "mdbook-gitinfo"
 renderer = ["html"]
 enable = true
-header = true
-footer = false
+header = false
+footer = true
 separator = " · "
-date-format = "%Y-%m-%d"
-time-format = "%H:%M"
-message.header = "更新于 {{date}} {{time}}{{sep}}分支：{{branch}}{{sep}}提交：{{hash}}"
-align.header = "left"
-margin.header = ["0", "0", "0.7em", "0"]
+date-format = "%Y-%m-%d %H:%M"
+message.footer = "更新于 {{date}}{{sep}}分支：{{branch}}{{sep}}提交：{{hash}}"
+margin.footer = ["0", "0", "0.7em", "0"]
 
 [preprocessor.pagetoc]
 command = "python3 scripts/pagetoc_wrapper.py"

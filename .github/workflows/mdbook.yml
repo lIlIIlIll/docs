@@ -223,121 +223,164 @@ jobs:
         if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p std_dev_book/src std_dev_book/theme std_dev_book/scripts
-          mkdir -p std_dev_book/src/vendor/gitcode
-          git -C ext_runtime checkout --detach origin/dev
-          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_dev_book/src/vendor/gitcode/
-
-          cp -r std_dev_book/src/vendor/gitcode/* std_dev_book/src/
-          rm -rf std_dev_book/src/std_en
-          rm -f std_dev_book/src/summary_cjnative_EN.md
-          mv -f std_dev_book/src/summary_cjnative.md std_dev_book/src/SUMMARY.md
+          git -C ext_runtime worktree add -f std_dev_book origin/dev
+          doc_root="stdlib/doc/libs"
+          rm -rf "std_dev_book/$doc_root/std_en"
+          rm -f "std_dev_book/$doc_root/summary_cjnative_EN.md"
+          if [[ -f "std_dev_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "std_dev_book/$doc_root/summary_cjnative.md" "std_dev_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p std_dev_book/theme std_dev_book/scripts
           cp -r theme/* std_dev_book/theme/
           cp scripts/* std_dev_book/scripts/
           cp book.toml std_dev_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("std_dev_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
+          p.write_text(text)
+          PY
       - name: Prepare stdx book (dev)
         if: ${{ env.BUILD_DEV == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p stdx_dev_book/src stdx_dev_book/theme stdx_dev_book/scripts
-          git -C ext_stdx checkout --detach origin/dev
-          rsync -a --delete ext_stdx/doc/* stdx_dev_book/src/
-          test -f stdx_dev_book/src/summary_cjnative.md && mv -f stdx_dev_book/src/summary_cjnative.md stdx_dev_book/src/SUMMARY.md
+          git -C ext_stdx worktree add -f stdx_dev_book origin/dev
+          doc_root="doc"
+          if [[ -f "stdx_dev_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "stdx_dev_book/$doc_root/summary_cjnative.md" "stdx_dev_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p stdx_dev_book/theme stdx_dev_book/scripts
           cp -r theme/* stdx_dev_book/theme/
           cp scripts/* stdx_dev_book/scripts/
           cp book.toml stdx_dev_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("stdx_dev_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "doc"')
+          p.write_text(text)
+          PY
       - name: Prepare std book (main)
         if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p std_main_book/src std_main_book/theme std_main_book/scripts
-          mkdir -p std_main_book/src/vendor/gitcode
-          git -C ext_runtime checkout --detach origin/main
-          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_main_book/src/vendor/gitcode/
-
-          cp -r std_main_book/src/vendor/gitcode/* std_main_book/src/
-          rm -rf std_main_book/src/std_en
-          rm -f std_main_book/src/summary_cjnative_EN.md
-          mv -f std_main_book/src/summary_cjnative.md std_main_book/src/SUMMARY.md
+          git -C ext_runtime worktree add -f std_main_book origin/main
+          doc_root="stdlib/doc/libs"
+          rm -rf "std_main_book/$doc_root/std_en"
+          rm -f "std_main_book/$doc_root/summary_cjnative_EN.md"
+          if [[ -f "std_main_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "std_main_book/$doc_root/summary_cjnative.md" "std_main_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p std_main_book/theme std_main_book/scripts
           cp -r theme/* std_main_book/theme/
           cp scripts/* std_main_book/scripts/
           cp book.toml std_main_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("std_main_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
+          p.write_text(text)
+          PY
       - name: Prepare stdx book (main)
         if: ${{ env.BUILD_MAIN == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p stdx_main_book/src stdx_main_book/theme stdx_main_book/scripts
-          git -C ext_stdx checkout --detach origin/main
-          rsync -a --delete ext_stdx/doc/* stdx_main_book/src/
-          test -f stdx_main_book/src/summary_cjnative.md && mv -f stdx_main_book/src/summary_cjnative.md stdx_main_book/src/SUMMARY.md
+          git -C ext_stdx worktree add -f stdx_main_book origin/main
+          doc_root="doc"
+          if [[ -f "stdx_main_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "stdx_main_book/$doc_root/summary_cjnative.md" "stdx_main_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p stdx_main_book/theme stdx_main_book/scripts
           cp -r theme/* stdx_main_book/theme/
           cp scripts/* stdx_main_book/scripts/
           cp book.toml stdx_main_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("stdx_main_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "doc"')
+          p.write_text(text)
+          PY
       - name: Prepare std book (release/1.0)
         if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p std_release_book/src std_release_book/theme std_release_book/scripts
-          mkdir -p std_release_book/src/vendor/gitcode
-          doc_src=""
-          git -C ext_runtime checkout --detach origin/release/1.0
-          if [[ -d ext_runtime/stdlib/doc/libs ]]; then
-            doc_src="ext_runtime/stdlib/doc/libs"
-          elif [[ -d ext_runtime/stdlib/doc ]]; then
-            doc_src="ext_runtime/stdlib/doc"
+          git -C ext_runtime worktree add -f std_release_book origin/release/1.0
+          doc_root=""
+          if [[ -d std_release_book/stdlib/doc/libs ]]; then
+            doc_root="stdlib/doc/libs"
+          elif [[ -d std_release_book/stdlib/doc ]]; then
+            doc_root="stdlib/doc"
           else
-            doc_src="$(find ext_runtime -type f -name summary_cjnative.md -print -quit || true)"
+            doc_src="$(find std_release_book -type f -name summary_cjnative.md -print -quit || true)"
             if [[ -n "$doc_src" ]]; then
-              doc_src="$(dirname "$doc_src")"
+              doc_root="$(dirname "${doc_src#std_release_book/}")"
             else
-              doc_src="$(find ext_runtime -type f -name SUMMARY.md -print -quit || true)"
+              doc_src="$(find std_release_book -type f -name SUMMARY.md -print -quit || true)"
               if [[ -n "$doc_src" ]]; then
-                doc_src="$(dirname "$doc_src")"
+                doc_root="$(dirname "${doc_src#std_release_book/}")"
               fi
             fi
           fi
-          if [[ -z "$doc_src" ]]; then
-            echo "stdlib doc not found in ext_runtime" >&2
+          if [[ -z "$doc_root" ]]; then
+            echo "stdlib doc not found in std_release_book" >&2
             exit 1
           fi
-          rsync -a --delete "$doc_src"/ std_release_book/src/vendor/gitcode/
-
-          cp -r std_release_book/src/vendor/gitcode/* std_release_book/src/
-          rm -rf std_release_book/src/std_en
-          rm -f std_release_book/src/summary_cjnative_EN.md
-          mv -f std_release_book/src/summary_cjnative.md std_release_book/src/SUMMARY.md
+          rm -rf "std_release_book/$doc_root/std_en"
+          rm -f "std_release_book/$doc_root/summary_cjnative_EN.md"
+          if [[ -f "std_release_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "std_release_book/$doc_root/summary_cjnative.md" "std_release_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p std_release_book/theme std_release_book/scripts
           cp -r theme/* std_release_book/theme/
           cp scripts/* std_release_book/scripts/
           cp book.toml std_release_book/book.toml
+          python3 - <<PY
+          from pathlib import Path
+          p = Path("std_release_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', f'src = "{doc_root}"')
+          p.write_text(text)
+          PY
       - name: Prepare stdx book (release/1.0)
         if: ${{ env.BUILD_RELEASE == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p stdx_release_book/src stdx_release_book/theme stdx_release_book/scripts
-          doc_src=""
-          git -C ext_stdx checkout --detach origin/release/1.0
-          if [[ -d ext_stdx/doc ]]; then
-            doc_src="ext_stdx/doc"
+          git -C ext_stdx worktree add -f stdx_release_book origin/release/1.0
+          doc_root=""
+          if [[ -d stdx_release_book/doc ]]; then
+            doc_root="doc"
           else
-            doc_src="$(find ext_stdx -type f -name summary_cjnative.md -print -quit || true)"
+            doc_src="$(find stdx_release_book -type f -name summary_cjnative.md -print -quit || true)"
             if [[ -n "$doc_src" ]]; then
-              doc_src="$(dirname "$doc_src")"
+              doc_root="$(dirname "${doc_src#stdx_release_book/}")"
             else
-              doc_src="$(find ext_stdx -type f -name SUMMARY.md -print -quit || true)"
+              doc_src="$(find stdx_release_book -type f -name SUMMARY.md -print -quit || true)"
               if [[ -n "$doc_src" ]]; then
-                doc_src="$(dirname "$doc_src")"
+                doc_root="$(dirname "${doc_src#stdx_release_book/}")"
               fi
             fi
           fi
-          if [[ -z "$doc_src" ]]; then
-            echo "stdx doc not found in ext_stdx" >&2
+          if [[ -z "$doc_root" ]]; then
+            echo "stdx doc not found in stdx_release_book" >&2
             exit 1
           fi
-          rsync -a --delete "$doc_src"/ stdx_release_book/src/
-          test -f stdx_release_book/src/summary_cjnative.md && mv -f stdx_release_book/src/summary_cjnative.md stdx_release_book/src/SUMMARY.md
+          if [[ -f "stdx_release_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "stdx_release_book/$doc_root/summary_cjnative.md" "stdx_release_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p stdx_release_book/theme stdx_release_book/scripts
           cp -r theme/* stdx_release_book/theme/
           cp scripts/* stdx_release_book/scripts/
           cp book.toml stdx_release_book/book.toml
+          python3 - <<PY
+          from pathlib import Path
+          p = Path("stdx_release_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', f'src = "{doc_root}"')
+          p.write_text(text)
+          PY
       - name: Checkout PR base branches
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
@@ -397,44 +440,61 @@ jobs:
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p std_pr_book/src std_pr_book/theme std_pr_book/scripts
-          mkdir -p std_pr_book/src/vendor/gitcode
-          rsync -a --delete ext_runtime/stdlib/doc/libs/ std_pr_book/src/vendor/gitcode/
-
-          cp -r std_pr_book/src/vendor/gitcode/* std_pr_book/src/
-          rm -rf std_pr_book/src/std_en
-          rm -f std_pr_book/src/summary_cjnative_EN.md
-          mv -f std_pr_book/src/summary_cjnative.md std_pr_book/src/SUMMARY.md
+          git -C ext_runtime worktree add -f std_pr_book HEAD
+          doc_root="stdlib/doc/libs"
+          rm -rf "std_pr_book/$doc_root/std_en"
+          rm -f "std_pr_book/$doc_root/summary_cjnative_EN.md"
+          if [[ -f "std_pr_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "std_pr_book/$doc_root/summary_cjnative.md" "std_pr_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p std_pr_book/theme std_pr_book/scripts
           cp -r theme/* std_pr_book/theme/
           cp scripts/* std_pr_book/scripts/
           cp book.toml std_pr_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("std_pr_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "stdlib/doc/libs"')
+          p.write_text(text)
+          PY
       - name: Prepare stdx book (pr)
         if: ${{ env.BUILD_PR == 'true' }}
         run: |
           set -euxo pipefail
-          mkdir -p stdx_pr_book/src stdx_pr_book/theme stdx_pr_book/scripts
-          rsync -a --delete ext_stdx/doc/* stdx_pr_book/src/
-          test -f stdx_pr_book/src/summary_cjnative.md && mv -f stdx_pr_book/src/summary_cjnative.md stdx_pr_book/src/SUMMARY.md
+          git -C ext_stdx worktree add -f stdx_pr_book HEAD
+          doc_root="doc"
+          if [[ -f "stdx_pr_book/$doc_root/summary_cjnative.md" ]]; then
+            cp -f "stdx_pr_book/$doc_root/summary_cjnative.md" "stdx_pr_book/$doc_root/SUMMARY.md"
+          fi
+          mkdir -p stdx_pr_book/theme stdx_pr_book/scripts
           cp -r theme/* stdx_pr_book/theme/
           cp scripts/* stdx_pr_book/scripts/
           cp book.toml stdx_pr_book/book.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("stdx_pr_book/book.toml")
+          text = p.read_text()
+          text = text.replace('src = "src"', 'src = "doc"')
+          p.write_text(text)
+          PY
       - name: Sanity check
         run: |
           if [[ "${BUILD_DEV}" == "true" ]]; then
-            test -f std_dev_book/src/SUMMARY.md
-            test -f stdx_dev_book/src/SUMMARY.md
+            test -f std_dev_book/stdlib/doc/libs/SUMMARY.md
+            test -f stdx_dev_book/doc/SUMMARY.md
           fi
           if [[ "${BUILD_MAIN}" == "true" ]]; then
-            test -f std_main_book/src/SUMMARY.md
-            test -f stdx_main_book/src/SUMMARY.md
+            test -f std_main_book/stdlib/doc/libs/SUMMARY.md
+            test -f stdx_main_book/doc/SUMMARY.md
           fi
           if [[ "${BUILD_RELEASE}" == "true" ]]; then
-            test -f std_release_book/src/SUMMARY.md
-            test -f stdx_release_book/src/SUMMARY.md
+            find std_release_book -path '*/SUMMARY.md' -print -quit | grep -q SUMMARY.md
+            find stdx_release_book -path '*/SUMMARY.md' -print -quit | grep -q SUMMARY.md
           fi
           if [[ "${BUILD_PR}" == "true" ]]; then
-            test -f std_pr_book/src/SUMMARY.md
-            test -f stdx_pr_book/src/SUMMARY.md
+            test -f std_pr_book/stdlib/doc/libs/SUMMARY.md
+            test -f stdx_pr_book/doc/SUMMARY.md
           fi
           if [[ "${BUILD_DEV}" == "true" ]]; then
             sed -n '1,10p' std_dev_book/book.toml
