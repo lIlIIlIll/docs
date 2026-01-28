@@ -157,6 +157,19 @@ jobs:
           }
           retry_clone https://gitcode.com/Cangjie/cangjie_runtime.git ext_runtime 1 "${STD_BRANCH}"
           timeout 30 git -C ext_runtime fetch --prune --tags --depth 1 origin dev main release/1.0 "$STD_BRANCH"
+          ensure_local_branch() {
+            local repo="$1"
+            local branch="$2"
+            if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+              git -C "$repo" branch -f "$branch" "origin/$branch"
+            fi
+          }
+          ensure_local_branch ext_runtime dev
+          ensure_local_branch ext_runtime main
+          ensure_local_branch ext_runtime "release/1.0"
+          if [[ -n "${STD_BRANCH:-}" ]]; then
+            ensure_local_branch ext_runtime "$STD_BRANCH"
+          fi
           ls -la ext_runtime
       - name: Clone cangjie-stdx
         run: |
@@ -180,6 +193,19 @@ jobs:
           }
           retry_clone https://gitcode.com/Cangjie/cangjie_stdx.git ext_stdx 1 "${STDX_BRANCH}"
           timeout 30 git -C ext_stdx fetch --prune --tags --depth 1 origin dev main release/1.0 "$STDX_BRANCH"
+          ensure_local_branch() {
+            local repo="$1"
+            local branch="$2"
+            if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+              git -C "$repo" branch -f "$branch" "origin/$branch"
+            fi
+          }
+          ensure_local_branch ext_stdx dev
+          ensure_local_branch ext_stdx main
+          ensure_local_branch ext_stdx "release/1.0"
+          if [[ -n "${STDX_BRANCH:-}" ]]; then
+            ensure_local_branch ext_stdx "$STDX_BRANCH"
+          fi
           ls -la ext_stdx
       - name: Get ext SHAs
         id: extsha
@@ -282,7 +308,7 @@ jobs:
             echo "HEAD"
           }
           std_dev_book="$GITHUB_WORKSPACE/std_dev_book"
-          std_ref="$(pick_ref ext_runtime origin/dev origin/main HEAD)"
+          std_ref="$(pick_ref ext_runtime dev origin/dev main origin/main HEAD)"
           git -C ext_runtime worktree add -f "$std_dev_book" "$std_ref"
           doc_root="stdlib/doc/libs"
           rm -rf "$std_dev_book/$doc_root/std_en"
@@ -318,7 +344,7 @@ jobs:
             echo "HEAD"
           }
           stdx_dev_book="$GITHUB_WORKSPACE/stdx_dev_book"
-          stdx_ref="$(pick_ref ext_stdx origin/dev origin/main HEAD)"
+          stdx_ref="$(pick_ref ext_stdx dev origin/dev main origin/main HEAD)"
           git -C ext_stdx worktree add -f "$stdx_dev_book" "$stdx_ref"
           doc_root="doc"
           if [[ -f "$stdx_dev_book/$doc_root/summary_cjnative.md" ]]; then
@@ -352,7 +378,7 @@ jobs:
             echo "HEAD"
           }
           std_main_book="$GITHUB_WORKSPACE/std_main_book"
-          std_ref="$(pick_ref ext_runtime origin/main HEAD)"
+          std_ref="$(pick_ref ext_runtime main origin/main HEAD)"
           git -C ext_runtime worktree add -f "$std_main_book" "$std_ref"
           doc_root="stdlib/doc/libs"
           rm -rf "$std_main_book/$doc_root/std_en"
@@ -388,7 +414,7 @@ jobs:
             echo "HEAD"
           }
           stdx_main_book="$GITHUB_WORKSPACE/stdx_main_book"
-          stdx_ref="$(pick_ref ext_stdx origin/main HEAD)"
+          stdx_ref="$(pick_ref ext_stdx main origin/main HEAD)"
           git -C ext_stdx worktree add -f "$stdx_main_book" "$stdx_ref"
           doc_root="doc"
           if [[ -f "$stdx_main_book/$doc_root/summary_cjnative.md" ]]; then
@@ -422,7 +448,7 @@ jobs:
             echo "HEAD"
           }
           std_release_book="$GITHUB_WORKSPACE/std_release_book"
-          std_ref="$(pick_ref ext_runtime origin/release/1.0 origin/main HEAD)"
+          std_ref="$(pick_ref ext_runtime release/1.0 origin/release/1.0 main origin/main HEAD)"
           git -C ext_runtime worktree add -f "$std_release_book" "$std_ref"
           doc_root=""
           if [[ -d "$std_release_book/stdlib/doc/libs" ]]; then
@@ -480,7 +506,7 @@ jobs:
             echo "HEAD"
           }
           stdx_release_book="$GITHUB_WORKSPACE/stdx_release_book"
-          stdx_ref="$(pick_ref ext_stdx origin/release/1.0 origin/main HEAD)"
+          stdx_ref="$(pick_ref ext_stdx release/1.0 origin/release/1.0 main origin/main HEAD)"
           git -C ext_stdx worktree add -f "$stdx_release_book" "$stdx_ref"
           doc_root=""
           if [[ -d "$stdx_release_book/doc" ]]; then
