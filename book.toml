@@ -29,8 +29,8 @@ command = "python3 scripts/blockquote_admonish.py"
 [preprocessor._2_example_fold]
 command = "python3 scripts/example_fold.py"
 
-[preprocessor._3_escape_html_tags]
-command = "python3 scripts/escape_html_tags.py"
+#[preprocessor._3_escape_html_tags]
+#command = "python3 scripts/escape_html_tags.py"
 
 [preprocessor.gitinfo]
 command = "mdbook-gitinfo"
