@@ -7,6 +7,16 @@ log() {
   echo "[ci] $*" >&2
 }
 
+ensure_cargo_path() {
+  if [[ -n "${CARGO_HOME:-}" && -d "${CARGO_HOME}/bin" ]]; then
+    export PATH="${CARGO_HOME}/bin:${PATH}"
+    return
+  fi
+  if [[ -d "${HOME}/.cargo/bin" ]]; then
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+  fi
+}
+
 retry_clone() {
   local url="$1"
   local dir="$2"
@@ -109,14 +119,22 @@ ensure_tool_version() {
   local install_cmd="$3"
   local force="${4:-false}"
 
+  ensure_cargo_path
+
   if [[ "$force" == "true" ]] || ! command -v "$cmd" >/dev/null 2>&1; then
     log "installing $cmd ($expected)"
     eval "$install_cmd"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "failed to install $cmd" >&2
+      return 2
+    fi
     return
   fi
 
   local current
-  current="$($cmd --version 2>/dev/null | awk '{print $NF}')"
+  if ! current="$($cmd --version 2>/dev/null | awk '{print $NF}')"; then
+    current=""
+  fi
   current="${current#v}"
   if [[ "$current" != "$expected" ]]; then
     log "$cmd version mismatch: have $current, want $expected"
