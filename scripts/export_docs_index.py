@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 
 SEARCHINDEX_PATTERN = re.compile(
@@ -26,6 +27,7 @@ EXTEND_RE = re.compile(
 )
 SAMPLE_TITLE_RE = re.compile(r"^(?P<container>[A-Za-z_][\w]*)\s*的\s*(?P<members>.+?)\s*函数$")
 LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 DEPRECATED_RE = re.compile(r"\(deprecated\)|已废弃|弃用|废弃", re.IGNORECASE)
 IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 DOCS_SITE_PREFIX = {
@@ -57,6 +59,9 @@ class ApiSymbol:
     summary_short_md: str | None
     summary_md: str | None
     details_md: str | None
+    notes_md: str | None
+    exceptions_md: str | None
+    see_also_md: str | None
     params: list[dict]
     returns_md: str | None
     examples_md: list[str]
@@ -66,12 +71,16 @@ class ApiSymbol:
     since: str | None = None
     deprecated: dict | None = None
     aliases: list[str] = field(default_factory=list)
+    search_keys_normalized: list[str] = field(default_factory=list)
+    example_titles: list[str] = field(default_factory=list)
+    example_snippets_short: list[str] = field(default_factory=list)
     signature_short: str | None = None
     callable: dict | None = None
     type_info: dict | None = None
     value_info: dict | None = None
     availability: dict | None = None
     extension_info: dict | None = None
+    parent_types: list[str] = field(default_factory=list)
 
 
 def clean_text(text: str) -> str:
@@ -98,6 +107,47 @@ def strip_inline_html(text: str) -> str:
 
 def split_platform_list(text: str) -> list[str]:
     return [clean_text(x) for x in re.split(r"[、,，]", text) if clean_text(x)]
+
+
+def absolutize_markdown_links(text: str | None, page_url: str) -> str | None:
+    if not text:
+        return text
+
+    def normalize_target(target: str) -> str:
+        return normalize_doc_target(target, page_url)
+
+    def repl(match: re.Match[str]) -> str:
+        label = match.group(1)
+        target = match.group(2).strip()
+        if not target:
+            return match.group(0)
+        return f"[{label}]({normalize_target(target)})"
+
+    return MARKDOWN_LINK_RE.sub(repl, text)
+
+
+def normalize_doc_target(target: str, page_url: str) -> str:
+    if target.startswith(("http://", "https://", "mailto:")):
+        return target
+    parts = urlsplit(target)
+    path = parts.path
+    if path.endswith(".md"):
+        path = path[:-3] + ".html"
+    normalized = urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    return urljoin(page_url, normalized)
+
+
+def extract_markdown_links(text: str | None, page_url: str) -> list[dict]:
+    if not text:
+        return []
+    links: list[dict] = []
+    for match in MARKDOWN_LINK_RE.finditer(text):
+        label = clean_text(match.group(1))
+        target = match.group(2).strip()
+        if not label or not target:
+            continue
+        links.append({"title": label, "url": normalize_doc_target(target, page_url)})
+    return links
 
 
 def extract_blockquote_admonitions(lines: list[str]) -> list[str]:
@@ -128,6 +178,21 @@ def first_sentence(text: str | None) -> str | None:
         if part:
             return part
     return text.strip() or None
+
+
+def summarize_markdown(text: str | None, max_len: int = 120) -> str | None:
+    if not text:
+        return None
+    text = normalize_markdown(text)
+    if not text:
+        return None
+    paragraph = text.split("\n\n", 1)[0].strip()
+    sentence = first_sentence(paragraph) or paragraph
+    plain = clean_text(strip_inline_html(LINK_RE.sub(r"\1", sentence)))
+    if len(plain) <= max_len:
+        return sentence
+    truncated = plain[: max_len - 1].rstrip()
+    return truncated + "…"
 
 
 def extract_replacement_fqname(text: str | None) -> str | None:
@@ -529,6 +594,35 @@ def parse_examples(lines: list[str]) -> list[str]:
     return examples
 
 
+def build_example_snippets_short(examples: list[str]) -> list[str]:
+    snippets: list[str] = []
+    for example in examples:
+        lines = example.splitlines()
+        code_lines = []
+        for line in lines[1:]:
+            if line.strip() == "```":
+                break
+            if line.strip():
+                code_lines.append(line.strip())
+        if not code_lines:
+            continue
+        snippet = None
+        for line in code_lines:
+            if line.startswith(("import ", "package ")):
+                continue
+            if line in {"main() {", "main(): Unit {", "{"}:
+                continue
+            if line.startswith("//"):
+                continue
+            snippet = clean_text(line)
+            break
+        snippet = snippet or clean_text(code_lines[0])
+        if len(snippet) > 100:
+            snippet = snippet[:99].rstrip() + "…"
+        snippets.append(snippet)
+    return snippets
+
+
 def parse_since(lines: list[str]) -> str | None:
     text = clean_text(" ".join(clean_label_block(lines)))
     if not text:
@@ -613,6 +707,8 @@ def build_extension_info(heading_text: str) -> dict | None:
         "target_display": target_display or None,
         "implements": iface_text or None,
         "implements_display": interface_display or None,
+        "extension_kind": "implementation" if iface_text else "extension",
+        "extension_owner_fqname": None,
     }
 
 
@@ -636,6 +732,103 @@ def split_params_src(params_src: str) -> list[str]:
     if tail:
         params.append(tail)
     return params
+
+
+def split_top_level(text: str, delimiter: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in "(<[{":
+            depth += 1
+        elif ch in ")>]}":
+            depth = max(depth - 1, 0)
+        if depth == 0 and text.startswith(delimiter, i):
+            part = "".join(current).strip()
+            if part:
+                parts.append(part)
+            current = []
+            i += len(delimiter)
+            continue
+        current.append(ch)
+        i += 1
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def parse_type_params(signature: str | None, display: str) -> list[str]:
+    if not signature:
+        return []
+    match = re.search(rf"\b{re.escape(display)}<([^>]+)>", signature)
+    if not match:
+        return []
+    return [clean_text(item) for item in split_params_src(match.group(1)) if clean_text(item)]
+
+
+def parse_parent_types_from_signature(signature: str | None) -> list[str]:
+    if not signature or "<:" not in signature:
+        return []
+    tail = signature.split("<:", 1)[1]
+    tail = tail.split(" where ", 1)[0].strip()
+    tail = re.sub(r"\s*\{\s*\}?\s*$", "", tail).strip()
+    return [clean_text(item) for item in split_top_level(tail, "&") if clean_text(item)]
+
+
+def is_probable_type_expr(text: str) -> bool:
+    candidate = LINK_RE.sub(r"\1", text or "")
+    candidate = strip_inline_html(candidate).strip()
+    if not candidate:
+        return False
+    if any(marker in candidate for marker in ("使用示例", "参考示例", "示例见", "例如", "说明", "注意")):
+        return False
+    if candidate in {":", "-", "—"}:
+        return False
+    return bool(re.search(r"[A-Za-z_][A-Za-z0-9_]*", candidate))
+
+
+def parse_parent_types_from_section(lines: list[str]) -> list[str]:
+    parent_types: list[str] = []
+    collected = False
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            if collected:
+                break
+            continue
+        if not stripped.startswith("-"):
+            if collected:
+                break
+            continue
+        collected = True
+        text = split_bullet(raw_line)
+        if " - " in text:
+            text = text.split(" - ", 1)[0]
+        text = LINK_RE.sub(r"\1", text)
+        text = clean_text(text)
+        if is_probable_type_expr(text):
+            parent_types.append(text)
+    return parent_types
+
+
+def parse_see_also(lines: list[str]) -> str | None:
+    items: list[str] = []
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        plain = strip_inline_html(stripped)
+        if not plain:
+            continue
+        if plain.startswith(("使用示例见", "另见", "参见", "See also", "See ")):
+            items.append(stripped)
+    return normalize_markdown("\n".join(items))
+
+
+def related_links_from_markdown(text: str | None, page_url: str, kind: str) -> list[dict]:
+    links = extract_markdown_links(text, page_url)
+    return [{"kind": kind, "title": item["title"], "url": item["url"]} for item in links]
 
 
 def parse_callable_info(signature: str | None, param_docs: list[dict]) -> tuple[dict | None, str | None]:
@@ -672,17 +865,47 @@ def parse_callable_info(signature: str | None, param_docs: list[dict]) -> tuple[
     return {"return_type": return_type, "params": params, "throws": []}, return_type
 
 
+def simplify_type_text(text: str | None) -> str | None:
+    if not text:
+        return text
+    value = clean_text(text)
+    value = re.sub(r"\(([^()]*)\)\s*->", lambda _m: "(…) ->", value) if "->" in value else value
+    if "<" in value and len(value) > 36:
+        value = re.sub(r"<[^<>]+>", "<…>", value)
+    return value
+
+
 def build_signature_short(signature: str | None) -> str | None:
     if not signature:
         return None
+    signature = clean_text(signature)
+    if len(signature) <= 100:
+        return signature
     match = re.search(r"^(.*?\()(.+)(\)\s*(?::\s*.+)?)$", signature)
     if not match:
-        return signature
+        return simplify_type_text(signature)
     params = split_params_src(match.group(2))
-    if len(params) <= 2:
-        return signature
-    first_two = ", ".join(params[:2])
-    return f"{match.group(1)}{first_two}, ...{match.group(3)}"
+    suffix = match.group(3)
+
+    def render_param(item: str) -> str:
+        name_part, sep, type_part = item.partition(":")
+        if not sep:
+            return simplify_type_text(item) or item
+        type_part = simplify_type_text(type_part)
+        return f"{clean_text(name_part)}: {type_part}"
+
+    rendered = [render_param(item) for item in params]
+    return_suffix = ""
+    ret_match = re.match(r"\)\s*(?::\s*(.+))?$", suffix)
+    if ret_match and ret_match.group(1):
+        return_suffix = f"): {simplify_type_text(ret_match.group(1))}"
+    else:
+        return_suffix = ")"
+
+    if len(rendered) <= 2:
+        candidate = f"{match.group(1)}{', '.join(rendered)}{return_suffix}"
+        return candidate if len(candidate) <= 100 else f"{match.group(1)}{rendered[0]}, ...{return_suffix}"
+    return f"{match.group(1)}{', '.join(rendered[:2])}, ...{return_suffix}"
 
 
 def heading_name(raw: str) -> str:
@@ -781,32 +1004,39 @@ def parse_symbol_section(
     symbol_container = container if kind in {"method", "property", "constructor", "operator"} else None
     if kind in {"class", "struct", "interface", "enum", "typealias"}:
         symbol_container = None
+    symbol_extension_info = dict(extension_info) if extension_info else None
+    if symbol_extension_info and symbol_container:
+        symbol_extension_info["extension_owner_fqname"] = f"{module}.{symbol_container}"
 
     signature = sanitize_signature(parse_signature(heading.content))
     unlabeled, sections = split_labeled_sections(heading.content)
-    summary_md = extract_prose_markdown(sections.get("功能", [])) or first_nonempty_paragraph(unlabeled)
+    summary_lines = [line for line in sections.get("功能", []) if not line.strip().startswith(">")]
+    summary_md = extract_prose_markdown(summary_lines) or first_nonempty_paragraph(unlabeled)
 
-    detail_parts: list[str] = []
-    for label in ("说明", "描述", "类型", "父类型", "异常"):
-        block = normalize_markdown("\n".join(sections.get(label, [])))
-        if block:
-            prefix = "" if label in {"说明", "描述"} else f"{label}：\n"
-            detail_parts.append(f"{prefix}{block}".strip())
     page_url = md_to_doc_url(src_root, md_path)
     deprecated_lines = sections.get("Deprecated", [])
     deprecated_info = build_deprecated_info(module, page_url, heading_text, deprecated_lines, heading.content)
     deprecated = deprecated or bool(deprecated_info)
+    if deprecated_info and deprecated_info.get("message_md"):
+        deprecated_info["message_md"] = absolutize_markdown_links(deprecated_info["message_md"], page_url)
+    parent_types = parse_parent_types_from_signature(signature)
+    if not parent_types:
+        parent_types = parse_parent_types_from_section(sections.get("父类型", []))
+    notes_parts: list[str] = []
+    notes_block = normalize_markdown("\n".join(sections.get("说明", []) + sections.get("描述", [])))
+    if notes_block:
+        notes_parts.append(notes_block)
     for block in extract_blockquote_admonitions(sections.get("功能", [])):
         if deprecated_info and deprecated_info.get("message_md") and deprecated_info["message_md"] in block:
             continue
         plain = strip_inline_html(block).strip()
         if "支持平台" in plain:
             continue
-        detail_parts.append(block)
+        notes_parts.append(block)
     if deprecated_lines:
         block = normalize_markdown("\n".join(deprecated_lines))
         if block:
-            detail_parts.append(f"Deprecated:\n{block}")
+            notes_parts.append(f"Deprecated:\n{block}")
 
     params = parse_params(sections.get("参数", []))
     returns_md = parse_returns(sections.get("返回值", []))
@@ -830,6 +1060,16 @@ def parse_symbol_section(
         deprecated_message=deprecated_info["message_md"] if deprecated_info else None,
         availability=availability,
     )
+    summary_md = absolutize_markdown_links(summary_md, page_url)
+    returns_md = absolutize_markdown_links(returns_md, page_url)
+    notes_md = absolutize_markdown_links(normalize_markdown("\n\n".join(notes_parts)), page_url)
+    exceptions_md = absolutize_markdown_links(
+        normalize_markdown("\n".join(sections.get("异常", []))) if sections.get("异常") else None,
+        page_url,
+    )
+    if exceptions_md:
+        exceptions_md = normalize_markdown(f"异常：\n{exceptions_md}")
+    see_also_md = absolutize_markdown_links(parse_see_also(heading.content), page_url)
 
     if kind in {"function", "method", "constructor"} and not signature:
         return None
@@ -859,10 +1099,24 @@ def parse_symbol_section(
         callable_info["throws"] = throws
     if kind in {"function", "method", "constructor"} and returns_md is None and inferred_return_type not in {None, "Unit"}:
         returns_md = inferred_return_type
-    type_info = {"type_params": [], "bases": [], "implements": []} if kind in {"class", "struct", "interface", "enum", "typealias", "exception"} else None
+    type_info = None
+    if kind in {"class", "struct", "interface", "enum", "typealias", "exception"}:
+        type_info = {
+            "type_params": parse_type_params(signature, display),
+            "bases": [],
+            "implements": [],
+        }
     value_info = None
     if kind in {"property", "field", "variable", "constant"}:
         value_info = {"value_type": inferred_return_type, "mutable": kind in {"property", "field", "variable"}}
+    detail_parts: list[str] = []
+    if notes_md:
+        detail_parts.append(notes_md)
+    if see_also_md:
+        detail_parts.append(see_also_md)
+    summary_short_md = summarize_markdown(summary_md, max_len=90)
+    if summary_short_md:
+        summary_short_md = normalize_markdown(absolutize_markdown_links(summary_short_md, page_url))
     return ApiSymbol(
         id=build_symbol_id(kind, package, module, symbol_container, display, signature),
         fqname=fqname,
@@ -875,12 +1129,17 @@ def parse_symbol_section(
         page_title=strip_inline_html(heading_text if heading_text else page_title).strip(),
         page_title_html=heading_text if heading_text else page_title,
         signature=signature,
-        summary_short_md=first_sentence(summary_md),
+        summary_short_md=summary_short_md,
         summary_md=summary_md,
         details_md=normalize_markdown("\n\n".join(detail_parts)),
+        notes_md=notes_md,
+        exceptions_md=exceptions_md,
+        see_also_md=see_also_md,
         params=params,
         returns_md=returns_md,
         examples_md=examples_md,
+        example_titles=[],
+        example_snippets_short=build_example_snippets_short(examples_md),
         page_url=page_url,
         anchor=anchor,
         since=since,
@@ -891,7 +1150,8 @@ def parse_symbol_section(
         type_info=type_info,
         value_info=value_info,
         availability=availability,
-        extension_info=extension_info,
+        extension_info=symbol_extension_info,
+        parent_types=parent_types,
     )
 
 
@@ -975,6 +1235,13 @@ def extract_code_identifiers(examples_md: list[str]) -> set[str]:
     return names
 
 
+def extract_title_identifiers(title: str) -> set[str]:
+    names: set[str] = set()
+    for match in IDENT_RE.findall(strip_inline_html(title)):
+        names.add(match)
+    return names
+
+
 def parse_example_file(src_root: Path, md_path: Path) -> dict:
     rel = md_path.relative_to(src_root)
     package, module = split_module_parts(rel)
@@ -999,7 +1266,7 @@ def parse_example_file(src_root: Path, md_path: Path) -> dict:
         example_id = f"example::{example_id_base}::{md_path.stem}"
     return {
         "id": example_id,
-        "title": title or md_path.stem,
+        "title": strip_inline_html(title or md_path.stem).strip(),
         "summary_md": summary,
         "doc_url": md_to_doc_url(src_root, md_path),
         "examples_md": examples_md,
@@ -1007,6 +1274,7 @@ def parse_example_file(src_root: Path, md_path: Path) -> dict:
         "container_hint": container,
         "member_hints": sorted(members),
         "identifiers": identifiers,
+        "title_identifiers": sorted(extract_title_identifiers(title or md_path.stem)),
         "related_symbols": [],
     }
 
@@ -1019,6 +1287,7 @@ def relate_examples(symbols: list[ApiSymbol], examples: list[dict]) -> None:
     for example in examples:
         matches: list[str] = []
         identifiers = set(example["identifiers"])
+        title_identifiers = set(example["title_identifiers"])
         for symbol in by_module.get(example["module"], []):
             if example["container_hint"]:
                 if symbol.container == example["container_hint"]:
@@ -1028,18 +1297,22 @@ def relate_examples(symbols: list[ApiSymbol], examples: list[dict]) -> None:
                     continue
             elif example["member_hints"] and symbol.display not in example["member_hints"]:
                 continue
-
-            if symbol.container and symbol.container not in identifiers and symbol.display not in identifiers:
-                if example["member_hints"]:
+            if symbol.container:
+                if symbol.display not in identifiers and symbol.display not in title_identifiers:
+                    if symbol.container not in identifiers and symbol.container not in title_identifiers:
+                        continue
+            else:
+                if symbol.display not in identifiers and symbol.display not in title_identifiers:
                     continue
-            if symbol.kind in {"method", "function", "constructor", "property", "operator"}:
-                if symbol.display not in identifiers and symbol.container not in identifiers:
+
+            if symbol.kind in {"method", "function", "constructor", "property", "operator"} and symbol.display not in identifiers:
+                if symbol.display not in title_identifiers and (not symbol.container or symbol.container not in identifiers):
                     continue
             matches.append(symbol.id)
             symbol.related_links.append(
                 {
                     "kind": "example",
-                    "title": Path(example["doc_url"]).stem,
+                    "title": example["title"],
                     "url": example["doc_url"],
                 }
             )
@@ -1048,6 +1321,7 @@ def relate_examples(symbols: list[ApiSymbol], examples: list[dict]) -> None:
         del example["container_hint"]
         del example["member_hints"]
         del example["identifiers"]
+        del example["title_identifiers"]
 
 
 def make_search_keys(symbol: ApiSymbol) -> list[str]:
@@ -1062,6 +1336,122 @@ def make_search_keys(symbol: ApiSymbol) -> list[str]:
         if key and key not in deduped:
             deduped.append(key)
     return deduped
+
+
+def make_search_keys_normalized(symbol: ApiSymbol) -> list[str]:
+    keys = []
+    keys.extend(symbol.aliases)
+    keys.extend(make_search_keys(symbol))
+    normalized: list[str] = []
+    for key in keys:
+        value = clean_text(strip_inline_html(key)).lower()
+        if value and value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
+def finalize_example_metadata(symbols: list[ApiSymbol]) -> None:
+    for symbol in symbols:
+        symbol.example_titles = [
+            link["title"]
+            for link in symbol.related_links
+            if link.get("kind") == "example" and link.get("title")
+        ]
+        symbol.example_snippets_short = build_example_snippets_short(symbol.examples_md)
+
+
+def resolve_type_info(symbols: list[ApiSymbol]) -> None:
+    by_display: dict[str, list[ApiSymbol]] = {}
+    for symbol in symbols:
+        by_display.setdefault(symbol.display, []).append(symbol)
+
+    for symbol in symbols:
+        if not symbol.type_info:
+            continue
+        bases: list[str] = []
+        implements: list[str] = []
+        for parent in symbol.parent_types:
+            display = type_display_name(parent) or parent
+            candidates = by_display.get(display, [])
+            resolved_kind = candidates[0].kind if len(candidates) == 1 else None
+            if symbol.kind == "interface":
+                bases.append(parent)
+            elif resolved_kind in {"class", "struct"}:
+                bases.append(parent)
+            else:
+                implements.append(parent)
+        symbol.type_info["bases"] = bases
+        symbol.type_info["implements"] = implements
+
+
+def build_overview_links(src_root: Path) -> dict[str, list[dict]]:
+    links_by_target: dict[str, list[dict]] = {}
+    for md_path in iter_markdown_files(src_root):
+        rel_posix = md_path.relative_to(src_root).as_posix()
+        if not rel_posix.endswith("_package_overview.md"):
+            continue
+        package, _module = split_module_parts(md_path.relative_to(src_root))
+        if not include_package(package):
+            continue
+        lines = md_path.read_text(encoding="utf-8").splitlines()
+        title, _headings = parse_headings(lines)
+        page_url = md_to_doc_url(src_root, md_path)
+        guide_title = title or md_path.stem
+        for raw_line in lines:
+            for item in extract_markdown_links(raw_line, page_url):
+                if "_package_api/" not in item["url"]:
+                    continue
+                links_by_target.setdefault(item["url"], []).append(
+                    {
+                        "kind": "guide",
+                        "title": guide_title,
+                        "url": page_url,
+                    }
+                )
+    return links_by_target
+
+
+def attach_related_links(symbols: list[ApiSymbol], overview_links: dict[str, list[dict]]) -> None:
+    for symbol in symbols:
+        if symbol.see_also_md:
+            symbol.related_links.extend(related_links_from_markdown(symbol.see_also_md, symbol.page_url, "see_also"))
+        for key in (symbol.page_url, f"{symbol.page_url}#{symbol.anchor}" if symbol.anchor else None):
+            if not key:
+                continue
+            symbol.related_links.extend(overview_links.get(key, []))
+
+
+def build_diagnostics_index(src_root: Path) -> list[dict]:
+    diagnostics: list[dict] = []
+    candidate_dirs = [
+        src_root / "compiler" / "errors",
+        src_root / "diagnostics",
+        src_root / "errors",
+    ]
+    for root in candidate_dirs:
+        if not root.is_dir():
+            continue
+        for md_path in sorted(root.rglob("*.md")):
+            lines = md_path.read_text(encoding="utf-8").splitlines()
+            title, _headings = parse_headings(lines)
+            code_match = re.search(r"\b([0-9]{3,})\b", md_path.stem) or re.search(r"\b([0-9]{3,})\b", title)
+            if not code_match:
+                continue
+            diagnostics.append(
+                {
+                    "code": int(code_match.group(1)),
+                    "source": "Cangjie",
+                    "title": title or md_path.stem,
+                    "summary_md": first_nonempty_paragraph(lines[1:]),
+                    "details_md": normalize_markdown("\n".join(lines[1:])),
+                    "page_url": md_to_doc_url(src_root, md_path),
+                    "anchor": None,
+                    "since": None,
+                    "deprecated": False,
+                    "search_keys": [code_match.group(1), clean_text(title or md_path.stem).lower()],
+                }
+            )
+    return diagnostics
 
 
 def build_docs_index(site_root: Path, book_dir: Path) -> dict:
@@ -1088,6 +1478,9 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
         unique_symbols.values(),
         key=lambda item: (item.package, item.module, item.container or "", item.display, item.kind, item.id),
     )
+    resolve_type_info(symbols)
+    for symbol in symbols:
+        symbol.search_keys_normalized = make_search_keys_normalized(symbol)
     symbol_by_fqname = {symbol.fqname: symbol for symbol in symbols}
     for symbol in symbols:
         if symbol.deprecated and symbol.deprecated.get("replacement_fqname"):
@@ -1096,8 +1489,11 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
                 symbol.deprecated["replacement_url"] = (
                     f"{target.page_url}#{target.anchor}" if target.anchor else target.page_url
                 )
+    attach_related_links(symbols, build_overview_links(src_root))
     relate_examples(symbols, examples)
+    finalize_example_metadata(symbols)
     examples = sorted(examples, key=lambda item: (item["doc_url"], item["id"]))
+    diagnostics = build_diagnostics_index(src_root)
 
     package_names = sorted({symbol.package for symbol in symbols})
     if len(package_names) == 1:
@@ -1131,9 +1527,14 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
                 "summary_short_md": symbol.summary_short_md,
                 "summary_md": symbol.summary_md,
                 "details_md": symbol.details_md,
+                "notes_md": symbol.notes_md,
+                "exceptions_md": symbol.exceptions_md,
+                "see_also_md": symbol.see_also_md,
                 "params": symbol.params,
                 "returns_md": symbol.returns_md,
                 "examples_md": symbol.examples_md,
+                "example_titles": symbol.example_titles,
+                "example_snippets_short": symbol.example_snippets_short,
                 "page_url": symbol.page_url,
                 "anchor": symbol.anchor,
                 "related_links": sorted(
@@ -1144,6 +1545,7 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
                 "deprecated": symbol.deprecated,
                 "aliases": symbol.aliases,
                 "search_keys": make_search_keys(symbol),
+                "search_keys_normalized": symbol.search_keys_normalized,
                 "callable": symbol.callable,
                 "type_info": symbol.type_info,
                 "value_info": symbol.value_info,
@@ -1152,7 +1554,7 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
             }
             for symbol in symbols
         ],
-        "diagnostics": [],
+        "diagnostics": diagnostics,
     }
 
 

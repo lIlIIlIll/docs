@@ -11,8 +11,8 @@ REQUIRED_TOP_LEVEL = {"format", "generated_at", "source", "symbol_count", "symbo
 REQUIRED_SYMBOL_FIELDS = {
     "id","fqname","kind","package","module","container","display","qualified_title",
     "page_title","page_title_html","signature","signature_short","summary_short_md",
-    "summary_md","details_md","examples_md","page_url","anchor","related_links",
-    "since","deprecated","aliases","search_keys","extension_info"
+    "summary_md","details_md","notes_md","exceptions_md","see_also_md","examples_md","example_titles","example_snippets_short","page_url","anchor","related_links",
+    "since","deprecated","aliases","search_keys","search_keys_normalized","extension_info"
 }
 
 
@@ -30,12 +30,18 @@ def validate_symbol(symbol: dict, index: int) -> list[str]:
         errors.append(f"symbol[{index}] anchor must be string|null")
     if not isinstance(symbol["examples_md"], list):
         errors.append(f"symbol[{index}] examples_md must be array")
+    if not isinstance(symbol["example_titles"], list):
+        errors.append(f"symbol[{index}] example_titles must be array")
+    if not isinstance(symbol["example_snippets_short"], list):
+        errors.append(f"symbol[{index}] example_snippets_short must be array")
     if not isinstance(symbol["related_links"], list):
         errors.append(f"symbol[{index}] related_links must be array")
     if not isinstance(symbol["aliases"], list):
         errors.append(f"symbol[{index}] aliases must be array")
     if not isinstance(symbol["search_keys"], list):
         errors.append(f"symbol[{index}] search_keys must be array")
+    if not isinstance(symbol["search_keys_normalized"], list):
+        errors.append(f"symbol[{index}] search_keys_normalized must be array")
     if symbol["page_url"].find("_samples/") != -1:
         errors.append(f"symbol[{index}] sample page leaked into symbols")
     if symbol["kind"] in {"function","method","constructor"}:
@@ -54,7 +60,7 @@ def validate_symbol(symbol: dict, index: int) -> list[str]:
         if not isinstance(extension_info, dict):
             errors.append(f"symbol[{index}] extension_info must be object|null")
         else:
-            for key in ("target", "target_display", "implements", "implements_display"):
+            for key in ("target", "target_display", "implements", "implements_display", "extension_kind", "extension_owner_fqname"):
                 if key not in extension_info:
                     errors.append(f"symbol[{index}] extension_info missing {key}")
     deprecated = symbol["deprecated"]

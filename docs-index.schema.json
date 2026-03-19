@@ -116,12 +116,14 @@
     "extension_info": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["target", "target_display", "implements", "implements_display"],
+      "required": ["target", "target_display", "implements", "implements_display", "extension_kind", "extension_owner_fqname"],
       "properties": {
         "target": { "type": ["string", "null"] },
         "target_display": { "type": ["string", "null"] },
         "implements": { "type": ["string", "null"] },
-        "implements_display": { "type": ["string", "null"] }
+        "implements_display": { "type": ["string", "null"] },
+        "extension_kind": { "type": "string" },
+        "extension_owner_fqname": { "type": ["string", "null"] }
       }
     },
     "symbol": {
@@ -130,8 +132,8 @@
       "required": [
         "id","fqname","kind","package","module","container","display","qualified_title",
         "page_title","page_title_html","signature","signature_short","summary_short_md",
-        "summary_md","details_md","examples_md","page_url","anchor","related_links",
-        "since","deprecated","aliases","search_keys","extension_info"
+        "summary_md","details_md","notes_md","exceptions_md","see_also_md","examples_md","example_titles","example_snippets_short","page_url","anchor","related_links",
+        "since","deprecated","aliases","search_keys","search_keys_normalized","extension_info"
       ],
       "properties": {
         "id": { "type": "string" },
@@ -149,9 +151,14 @@
         "summary_short_md": { "type": ["string", "null"] },
         "summary_md": { "type": ["string", "null"] },
         "details_md": { "type": ["string", "null"] },
+        "notes_md": { "type": ["string", "null"] },
+        "exceptions_md": { "type": ["string", "null"] },
+        "see_also_md": { "type": ["string", "null"] },
         "params": { "type": "array" },
         "returns_md": { "type": ["string", "null"] },
         "examples_md": { "type": "array", "items": { "type": "string" } },
+        "example_titles": { "type": "array", "items": { "type": "string" } },
+        "example_snippets_short": { "type": "array", "items": { "type": "string" } },
         "page_url": { "type": "string" },
         "anchor": { "type": ["string", "null"] },
         "related_links": { "type": "array", "items": { "$ref": "#/$defs/related_link" } },
@@ -159,6 +166,7 @@
         "deprecated": { "type": ["object", "null"] },
         "aliases": { "type": "array", "items": { "type": "string" } },
         "search_keys": { "type": "array", "items": { "type": "string" } },
+        "search_keys_normalized": { "type": "array", "items": { "type": "string" } },
         "callable": { "type": ["object", "null"] },
         "type_info": { "type": ["object", "null"] },
         "value_info": { "type": ["object", "null"] },

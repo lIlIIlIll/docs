@@ -55,6 +55,7 @@ local function validate_symbol(symbol)
     "page_url",
     "aliases",
     "search_keys",
+    "search_keys_normalized",
   }
   for _, key in ipairs(required) do
     if symbol[key] == nil then
@@ -77,6 +78,12 @@ local function build_symbol_maps(symbols)
     for _, alias in ipairs(symbol.aliases or {}) do
       by_alias[alias] = by_alias[alias] or {}
       table.insert(by_alias[alias], symbol)
+    end
+
+    for _, key in ipairs(symbol.search_keys_normalized or {}) do
+      local normalized = normalize_term(key)
+      by_search_key[normalized] = by_search_key[normalized] or {}
+      table.insert(by_search_key[normalized], symbol)
     end
 
     for _, key in ipairs(symbol.search_keys or {}) do
@@ -195,6 +202,27 @@ local function format_availability(symbol)
   return table.concat(lines, "\n")
 end
 
+local function format_extension_info(symbol)
+  local info = symbol.extension_info
+  if not info then
+    return nil
+  end
+  local parts = {}
+  if info.target_display and info.target_display ~= "" then
+    parts[#parts + 1] = "Extension target: `" .. info.target_display .. "`"
+  end
+  if info.implements and info.implements ~= "" then
+    parts[#parts + 1] = "Implements: `" .. info.implements .. "`"
+  end
+  if info.extension_owner_fqname and info.extension_owner_fqname ~= "" then
+    parts[#parts + 1] = "Owner: `" .. info.extension_owner_fqname .. "`"
+  end
+  if vim.tbl_isempty(parts) then
+    return nil
+  end
+  return table.concat(parts, "\n")
+end
+
 local function format_examples(symbol)
   local examples = symbol.examples_md or {}
   if vim.tbl_isempty(examples) then
@@ -281,6 +309,11 @@ local function build_hover_value(symbol)
     chunks[#chunks + 1] = availability
   end
 
+  local extension = format_extension_info(symbol)
+  if extension then
+    chunks[#chunks + 1] = extension
+  end
+
   if symbol.summary_short_md and symbol.summary_short_md ~= "" then
     chunks[#chunks + 1] = symbol.summary_short_md
   end
@@ -293,9 +326,21 @@ local function build_hover_value(symbol)
     chunks[#chunks + 1] = symbol.details_md
   end
 
+  if symbol.notes_md and symbol.notes_md ~= "" and symbol.notes_md ~= symbol.details_md then
+    chunks[#chunks + 1] = symbol.notes_md
+  end
+
   local callable = format_callable_details(symbol)
   if callable then
     chunks[#chunks + 1] = callable
+  end
+
+  if symbol.exceptions_md and symbol.exceptions_md ~= "" then
+    chunks[#chunks + 1] = symbol.exceptions_md
+  end
+
+  if symbol.see_also_md and symbol.see_also_md ~= "" then
+    chunks[#chunks + 1] = symbol.see_also_md
   end
 
   local examples = format_examples(symbol)
@@ -416,6 +461,9 @@ function M:completion_documentation(symbol)
   end
   if symbol.summary_short_md and symbol.summary_short_md ~= "" then
     parts[#parts + 1] = symbol.summary_short_md
+  end
+  if symbol.example_snippets_short and not vim.tbl_isempty(symbol.example_snippets_short) then
+    parts[#parts + 1] = "示例：\n- `" .. table.concat(symbol.example_snippets_short, "`\n- `") .. "`"
   end
   local deprecated = format_deprecated(symbol)
   if deprecated then
