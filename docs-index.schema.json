@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/docs-index.schema.json",
+  "title": "docs-index.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "generated_at",
+    "source",
+    "symbol_count",
+    "symbols",
+    "diagnostics"
+  ],
+  "properties": {
+    "format": { "type": "integer", "const": 4 },
+    "generated_at": { "type": "string" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site", "version", "searchindex"],
+      "properties": {
+        "site": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "searchindex": { "type": "string" }
+      }
+    },
+    "symbol_count": { "type": "integer", "minimum": 0 },
+    "symbols": { "type": "array", "items": { "$ref": "#/$defs/symbol" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "$defs": {
+    "related_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title", "url"],
+      "properties": {
+        "kind": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "deprecated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["is_deprecated", "message_md", "since", "replacement_fqname", "replacement_url"],
+      "properties": {
+        "is_deprecated": { "type": "boolean" },
+        "message_md": { "type": ["string", "null"] },
+        "since": { "type": ["string", "null"] },
+        "replacement_fqname": { "type": ["string", "null"] },
+        "replacement_url": { "type": ["string", "null"] }
+      }
+    },
+    "callable_param": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "type", "is_named", "is_optional", "has_default", "default_value_md", "doc_md"],
+      "properties": {
+        "label": { "type": "string" },
+        "type": { "type": ["string", "null"] },
+        "is_named": { "type": "boolean" },
+        "is_optional": { "type": "boolean" },
+        "has_default": { "type": "boolean" },
+        "default_value_md": { "type": ["string", "null"] },
+        "doc_md": { "type": ["string", "null"] }
+      }
+    },
+    "callable_throw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "doc_md"],
+      "properties": {
+        "type": { "type": "string" },
+        "doc_md": { "type": ["string", "null"] }
+      }
+    },
+    "callable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["return_type", "params", "throws"],
+      "properties": {
+        "return_type": { "type": ["string", "null"] },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/callable_param" } },
+        "throws": { "type": "array", "items": { "$ref": "#/$defs/callable_throw" } }
+      }
+    },
+    "type_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type_params", "bases", "implements"],
+      "properties": {
+        "type_params": { "type": "array", "items": { "type": "string" } },
+        "bases": { "type": "array", "items": { "type": "string" } },
+        "implements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "value_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value_type", "mutable"],
+      "properties": {
+        "value_type": { "type": ["string", "null"] },
+        "mutable": { "type": "boolean" }
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_platforms", "unsupported_platforms"],
+      "properties": {
+        "supported_platforms": { "type": ["array", "null"], "items": { "type": "string" } },
+        "unsupported_platforms": { "type": ["array", "null"], "items": { "type": "string" } }
+      }
+    },
+    "extension_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "target_display", "implements", "implements_display"],
+      "properties": {
+        "target": { "type": ["string", "null"] },
+        "target_display": { "type": ["string", "null"] },
+        "implements": { "type": ["string", "null"] },
+        "implements_display": { "type": ["string", "null"] }
+      }
+    },
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id","fqname","kind","package","module","container","display","qualified_title",
+        "page_title","page_title_html","signature","signature_short","summary_short_md",
+        "summary_md","details_md","examples_md","page_url","anchor","related_links",
+        "since","deprecated","aliases","search_keys","extension_info"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "fqname": { "type": "string" },
+        "kind": { "type": "string" },
+        "package": { "type": "string" },
+        "module": { "type": "string" },
+        "container": { "type": ["string", "null"] },
+        "display": { "type": "string" },
+        "qualified_title": { "type": "string" },
+        "page_title": { "type": "string" },
+        "page_title_html": { "type": "string" },
+        "signature": { "type": ["string", "null"] },
+        "signature_short": { "type": ["string", "null"] },
+        "summary_short_md": { "type": ["string", "null"] },
+        "summary_md": { "type": ["string", "null"] },
+        "details_md": { "type": ["string", "null"] },
+        "params": { "type": "array" },
+        "returns_md": { "type": ["string", "null"] },
+        "examples_md": { "type": "array", "items": { "type": "string" } },
+        "page_url": { "type": "string" },
+        "anchor": { "type": ["string", "null"] },
+        "related_links": { "type": "array", "items": { "$ref": "#/$defs/related_link" } },
+        "since": { "type": ["string", "null"] },
+        "deprecated": { "type": ["object", "null"] },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "search_keys": { "type": "array", "items": { "type": "string" } },
+        "callable": { "type": ["object", "null"] },
+        "type_info": { "type": ["object", "null"] },
+        "value_info": { "type": ["object", "null"] },
+        "availability": { "type": ["object", "null"] },
+        "extension_info": { "type": ["object", "null"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "source", "title", "summary_md", "details_md", "page_url", "anchor", "since", "deprecated", "search_keys"],
+      "properties": {
+        "code": { "type": ["integer", "string"] },
+        "source": { "type": "string" },
+        "title": { "type": "string" },
+        "summary_md": { "type": ["string", "null"] },
+        "details_md": { "type": ["string", "null"] },
+        "page_url": { "type": "string" },
+        "anchor": { "type": ["string", "null"] },
+        "since": { "type": ["string", "null"] },
+        "deprecated": { "type": "boolean" },
+        "search_keys": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

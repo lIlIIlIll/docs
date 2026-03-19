@@ -79,18 +79,26 @@ write_redirects() {
 assert_outputs() {
   test -d "$GITHUB_WORKSPACE/book"
   test -f "$DEV_STD_OUT_DIR/index.html" || (echo "dev std index.html missing" && exit 2)
+  test -f "$DEV_STD_OUT_DIR/docs-index.json" || (echo "dev std docs-index.json missing" && exit 2)
   test -f "$DEV_STDX_OUT_DIR/index.html" || (echo "dev stdx index.html missing" && exit 2)
+  test -f "$DEV_STDX_OUT_DIR/docs-index.json" || (echo "dev stdx docs-index.json missing" && exit 2)
   test -f "$MAIN_STD_OUT_DIR/index.html" || (echo "main std index.html missing" && exit 2)
+  test -f "$MAIN_STD_OUT_DIR/docs-index.json" || (echo "main std docs-index.json missing" && exit 2)
   test -f "$MAIN_STDX_OUT_DIR/index.html" || (echo "main stdx index.html missing" && exit 2)
+  test -f "$MAIN_STDX_OUT_DIR/docs-index.json" || (echo "main stdx docs-index.json missing" && exit 2)
   test -f "$RELEASE_STD_OUT_DIR/index.html" || (echo "release std index.html missing" && exit 2)
+  test -f "$RELEASE_STD_OUT_DIR/docs-index.json" || (echo "release std docs-index.json missing" && exit 2)
   test -f "$RELEASE_STDX_OUT_DIR/index.html" || (echo "release stdx index.html missing" && exit 2)
+  test -f "$RELEASE_STDX_OUT_DIR/docs-index.json" || (echo "release stdx docs-index.json missing" && exit 2)
   grep -nE 'pagetoc\.(js|css)' "$DEV_STD_OUT_DIR/index.html" || echo 'pagetoc asset missing'
   find "$GITHUB_WORKSPACE/book" -path '*/theme/pagetoc.*' -print || echo 'theme/pagetoc.* missing'
   grep -nE 'class="pagetoc|id="pagetoc' "$DEV_STD_OUT_DIR/index.html" || echo 'pagetoc container missing'
   find "$GITHUB_WORKSPACE/book" -maxdepth 5 -type f -name 'toc.js' -print
   if [[ "${BUILD_PR}" == "true" ]]; then
     test -f "$PR_STD_OUT_DIR/index.html" || (echo "pr std index.html missing" && exit 2)
+    test -f "$PR_STD_OUT_DIR/docs-index.json" || (echo "pr std docs-index.json missing" && exit 2)
     test -f "$PR_STDX_OUT_DIR/index.html" || (echo "pr stdx index.html missing" && exit 2)
+    test -f "$PR_STDX_OUT_DIR/docs-index.json" || (echo "pr stdx docs-index.json missing" && exit 2)
     test -f "$PR_OUT_ROOT/.stamp" || (echo "pr stamp missing" && exit 2)
   fi
 }

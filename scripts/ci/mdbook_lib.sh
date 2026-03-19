@@ -271,7 +271,10 @@ build_book() {
   local ts
   ts="$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M")"
   (cd "$book_dir" && MDBOOK_BOOK__TITLE="$base_title $ts" mdbook build --dest-dir "$dest_dir")
+  python3 "$DOCS_ROOT/scripts/export_docs_index.py" "$dest_dir" --book-dir "$book_dir"
+  python3 "$DOCS_ROOT/scripts/validate_docs_index.py" "$dest_dir/docs-index.json"
   test -f "$dest_dir/index.html"
+  test -f "$dest_dir/docs-index.json"
 }
 
 write_redirect() {
