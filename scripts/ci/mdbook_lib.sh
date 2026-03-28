@@ -259,6 +259,8 @@ prepare_stdx_book() {
     echo "stdx doc not found in $worktree_dir" >&2
     exit 1
   fi
+  rm -rf "$worktree_dir/$doc_root/libs_stdx_en" || true
+  rm -f "$worktree_dir/$doc_root/summary_cjnative_EN.md" || true
   normalize_summary "$worktree_dir/$doc_root"
   copy_assets "$worktree_dir"
   set_book_src "$worktree_dir/book.toml" "$doc_root"

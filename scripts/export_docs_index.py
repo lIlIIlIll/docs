@@ -289,24 +289,58 @@ def iter_markdown_files(src_root: Path) -> list[Path]:
     return sorted(path for path in src_root.rglob("*.md") if path.name != "SUMMARY.md")
 
 
-def split_module_parts(rel_path: Path) -> tuple[str, str]:
+def split_module_parts(rel_path: Path, default_package: str | None = None) -> tuple[str, str]:
     parts = list(rel_path.parts)
     if not parts:
         return "", ""
-    package = parts[0]
-    module_parts = [part for part in parts[:-1] if "_package_" not in part and "_samples" not in part]
+    stdx_wrappers = {"libs_stdx", "libs_stdx_en"}
+    if parts[0] in DOCS_SITE_PREFIX:
+        package = parts[0]
+        module_seed = parts[:-1]
+    elif default_package:
+        wrapper = parts[0]
+        if wrapper.endswith("_en"):
+            package = f"{default_package}_en"
+        else:
+            package = default_package
+        tail_parts = parts[1:-1] if wrapper in stdx_wrappers else parts[:-1]
+        module_seed = [package, *tail_parts]
+    else:
+        package = parts[0]
+        module_seed = parts[:-1]
+    module_parts = [part for part in module_seed if "_package_" not in part and "_samples" not in part]
     if not module_parts:
         module_parts = [package]
     return package, ".".join(module_parts)
+
+
+def infer_default_package(book_dir: Path, site_root: Path, src_root: Path) -> str | None:
+    top_dirs = {path.name for path in src_root.iterdir() if path.is_dir()} if src_root.is_dir() else set()
+    if top_dirs & set(DOCS_SITE_PREFIX):
+        return None
+    hints = " ".join((str(book_dir), str(site_root), str(src_root))).lower()
+    if "stdx" in hints:
+        return "stdx"
+    if re.search(r"(^|[^a-z])std([^a-z]|$)", hints):
+        return "std"
+    return None
 
 
 def include_package(package: str) -> bool:
     return package in DOCS_SITE_PREFIX
 
 
-def md_to_doc_url(src_root: Path, md_path: Path, anchor: str | None = None) -> str:
+def md_to_doc_url(
+    src_root: Path,
+    md_path: Path,
+    anchor: str | None = None,
+    default_package: str | None = None,
+) -> str:
     rel = md_path.relative_to(src_root)
-    package = rel.parts[0] if rel.parts else ""
+    if rel.parts and rel.parts[0] in DOCS_SITE_PREFIX:
+        package = rel.parts[0]
+    else:
+        package = default_package or (rel.parts[0] if rel.parts else "")
     base = DOCS_SITE_PREFIX.get(package, "")
     path = "/" + rel.with_suffix(".html").as_posix()
     url = f"{base}{path}" if base else path
@@ -979,6 +1013,7 @@ def parse_symbol_section(
     heading: Heading,
     container: str | None,
     extension_info: dict | None,
+    default_package: str | None = None,
 ) -> ApiSymbol | None:
     heading_text = heading.text
     deprecated = bool(DEPRECATED_RE.search(heading_text))
@@ -1013,7 +1048,7 @@ def parse_symbol_section(
     summary_lines = [line for line in sections.get("功能", []) if not line.strip().startswith(">")]
     summary_md = extract_prose_markdown(summary_lines) or first_nonempty_paragraph(unlabeled)
 
-    page_url = md_to_doc_url(src_root, md_path)
+    page_url = md_to_doc_url(src_root, md_path, default_package=default_package)
     deprecated_lines = sections.get("Deprecated", [])
     deprecated_info = build_deprecated_info(module, page_url, heading_text, deprecated_lines, heading.content)
     deprecated = deprecated or bool(deprecated_info)
@@ -1155,9 +1190,9 @@ def parse_symbol_section(
     )
 
 
-def parse_api_file(src_root: Path, md_path: Path) -> list[ApiSymbol]:
+def parse_api_file(src_root: Path, md_path: Path, default_package: str | None = None) -> list[ApiSymbol]:
     rel = md_path.relative_to(src_root)
-    package, module = split_module_parts(rel)
+    package, module = split_module_parts(rel, default_package=default_package)
     if not include_package(package):
         return []
     lines = md_path.read_text(encoding="utf-8").splitlines()
@@ -1174,7 +1209,9 @@ def parse_api_file(src_root: Path, md_path: Path) -> list[ApiSymbol]:
             raw_kind = top_match.group(1).lower() if top_match else "macro"
             current_container = None
             current_extension_info = None
-            symbol = parse_symbol_section(package, module, page_title, md_path, src_root, heading, None, None)
+            symbol = parse_symbol_section(
+                package, module, page_title, md_path, src_root, heading, None, None, default_package=default_package
+            )
             if symbol:
                 symbols.append(symbol)
                 if raw_kind in {"class", "struct", "interface", "enum", "typealias"}:
@@ -1195,6 +1232,7 @@ def parse_api_file(src_root: Path, md_path: Path) -> list[ApiSymbol]:
                     heading,
                     current_container,
                     current_extension_info,
+                    default_package=default_package,
                 )
                 if symbol:
                     symbols.append(symbol)
@@ -1208,6 +1246,7 @@ def parse_api_file(src_root: Path, md_path: Path) -> list[ApiSymbol]:
                 heading,
                 current_container,
                 current_extension_info,
+                default_package=default_package,
             )
             if symbol:
                 symbols.append(symbol)
@@ -1242,9 +1281,9 @@ def extract_title_identifiers(title: str) -> set[str]:
     return names
 
 
-def parse_example_file(src_root: Path, md_path: Path) -> dict:
+def parse_example_file(src_root: Path, md_path: Path, default_package: str | None = None) -> dict:
     rel = md_path.relative_to(src_root)
-    package, module = split_module_parts(rel)
+    package, module = split_module_parts(rel, default_package=default_package)
     if not include_package(package):
         return {}
     lines = md_path.read_text(encoding="utf-8").splitlines()
@@ -1268,7 +1307,7 @@ def parse_example_file(src_root: Path, md_path: Path) -> dict:
         "id": example_id,
         "title": strip_inline_html(title or md_path.stem).strip(),
         "summary_md": summary,
-        "doc_url": md_to_doc_url(src_root, md_path),
+        "doc_url": md_to_doc_url(src_root, md_path, default_package=default_package),
         "examples_md": examples_md,
         "module": module,
         "container_hint": container,
@@ -1384,18 +1423,18 @@ def resolve_type_info(symbols: list[ApiSymbol]) -> None:
         symbol.type_info["implements"] = implements
 
 
-def build_overview_links(src_root: Path) -> dict[str, list[dict]]:
+def build_overview_links(src_root: Path, default_package: str | None = None) -> dict[str, list[dict]]:
     links_by_target: dict[str, list[dict]] = {}
     for md_path in iter_markdown_files(src_root):
         rel_posix = md_path.relative_to(src_root).as_posix()
         if not rel_posix.endswith("_package_overview.md"):
             continue
-        package, _module = split_module_parts(md_path.relative_to(src_root))
+        package, _module = split_module_parts(md_path.relative_to(src_root), default_package=default_package)
         if not include_package(package):
             continue
         lines = md_path.read_text(encoding="utf-8").splitlines()
         title, _headings = parse_headings(lines)
-        page_url = md_to_doc_url(src_root, md_path)
+        page_url = md_to_doc_url(src_root, md_path, default_package=default_package)
         guide_title = title or md_path.stem
         for raw_line in lines:
             for item in extract_markdown_links(raw_line, page_url):
@@ -1421,7 +1460,7 @@ def attach_related_links(symbols: list[ApiSymbol], overview_links: dict[str, lis
             symbol.related_links.extend(overview_links.get(key, []))
 
 
-def build_diagnostics_index(src_root: Path) -> list[dict]:
+def build_diagnostics_index(src_root: Path, default_package: str | None = None) -> list[dict]:
     diagnostics: list[dict] = []
     candidate_dirs = [
         src_root / "compiler" / "errors",
@@ -1444,7 +1483,7 @@ def build_diagnostics_index(src_root: Path) -> list[dict]:
                     "title": title or md_path.stem,
                     "summary_md": first_nonempty_paragraph(lines[1:]),
                     "details_md": normalize_markdown("\n".join(lines[1:])),
-                    "page_url": md_to_doc_url(src_root, md_path),
+                    "page_url": md_to_doc_url(src_root, md_path, default_package=default_package),
                     "anchor": None,
                     "since": None,
                     "deprecated": False,
@@ -1456,6 +1495,7 @@ def build_diagnostics_index(src_root: Path) -> list[dict]:
 
 def build_docs_index(site_root: Path, book_dir: Path) -> dict:
     src_root = parse_book_src(book_dir)
+    default_package = infer_default_package(book_dir, site_root, src_root)
     searchindex_name = load_searchindex_name(site_root)
     symbols: list[ApiSymbol] = []
     examples: list[dict] = []
@@ -1463,9 +1503,9 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
     for md_path in iter_markdown_files(src_root):
         rel_posix = md_path.relative_to(src_root).as_posix()
         if "/_package_api/" in rel_posix or "_package_api/" in rel_posix:
-            symbols.extend(parse_api_file(src_root, md_path))
+            symbols.extend(parse_api_file(src_root, md_path, default_package=default_package))
         elif "/_samples/" in rel_posix or "_samples/" in rel_posix:
-            example = parse_example_file(src_root, md_path)
+            example = parse_example_file(src_root, md_path, default_package=default_package)
             if example:
                 examples.append(example)
 
@@ -1489,11 +1529,11 @@ def build_docs_index(site_root: Path, book_dir: Path) -> dict:
                 symbol.deprecated["replacement_url"] = (
                     f"{target.page_url}#{target.anchor}" if target.anchor else target.page_url
                 )
-    attach_related_links(symbols, build_overview_links(src_root))
+    attach_related_links(symbols, build_overview_links(src_root, default_package=default_package))
     relate_examples(symbols, examples)
     finalize_example_metadata(symbols)
     examples = sorted(examples, key=lambda item: (item["doc_url"], item["id"]))
-    diagnostics = build_diagnostics_index(src_root)
+    diagnostics = build_diagnostics_index(src_root, default_package=default_package)
 
     package_names = sorted({symbol.package for symbol in symbols})
     if len(package_names) == 1:
