@@ -20,6 +20,7 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 LABEL_RE = re.compile(r"^(功能|参数|返回值|示例|运行结果|类型|父类型|异常|自\s*[0-9.]+\s*版本开始支持|Since|Deprecated|说明|描述)：?\s*(.*)$")
 TOP_LEVEL_KIND_RE = re.compile(r"^(class|struct|interface|enum|func|macro|const|var|typealias|type)\s+(.+)$", re.IGNORECASE)
 MEMBER_KIND_RE = re.compile(r"^(?:(static)\s+)?(prop|let|func|init|operator)\b\s*(.*)$", re.IGNORECASE)
+OPERATOR_NAME_RE = re.compile(r"operator\s+func\s+([^\s(]+)")
 MACRO_TITLE_RE = re.compile(r"^`?(?P<name>@[A-Za-z_][\w]*)`?\s*(?:宏|Macro)$")
 EXTEND_RE = re.compile(
     r"^extend(?:<[^>]+>)?\s+(?P<target>.+?)(?:\s*<:\s*(?P<iface>.+))?$",
@@ -710,6 +711,14 @@ def sanitize_signature(signature: str | None) -> str | None:
     return text
 
 
+def parse_operator_name(heading_text: str, signature: str | None = None) -> str | None:
+    for text in (heading_text, signature or ""):
+        match = OPERATOR_NAME_RE.search(text or "")
+        if match:
+            return clean_text(match.group(1))
+    return None
+
+
 def fallback_callable_signature(
     heading_text: str,
     display: str,
@@ -976,6 +985,8 @@ def display_from_heading(kind: str, heading_text: str) -> str:
     member_match = MEMBER_KIND_RE.match(heading_text)
     if kind == "func" and member_match:
         tail = member_match.group(3)
+    elif kind == "operator":
+        return parse_operator_name(heading_text) or "operator"
     elif kind == "builtin":
         tail = heading_text
     elif kind in {"class", "struct", "interface", "enum", "func", "macro", "const", "var", "typealias", "type"}:
@@ -1019,7 +1030,7 @@ def build_symbol_id(kind: str, package: str, module: str, container: str | None,
     if container:
         scope = f"{scope}::{container}"
     base = f"{kind}::{scope}::{display}" if scope else f"{kind}::{display}"
-    if kind in {"function", "method", "constructor"}:
+    if kind in {"function", "method", "constructor", "operator"}:
         return f"{base}#{callable_hash(signature, display)}"
     return base
 
@@ -1066,6 +1077,8 @@ def parse_symbol_section(
         symbol_extension_info["extension_owner_fqname"] = f"{module}.{symbol_container}"
 
     signature = sanitize_signature(parse_signature(heading.content))
+    if kind == "operator":
+        display = parse_operator_name(heading_text, signature) or display
     unlabeled, sections = split_labeled_sections(heading.content)
     summary_lines = [line for line in sections.get("功能", []) if not line.strip().startswith(">")]
     summary_md = extract_prose_markdown(summary_lines) or first_nonempty_paragraph(unlabeled)
