@@ -18,7 +18,7 @@ SEARCHINDEX_PATTERN = re.compile(
 )
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 LABEL_RE = re.compile(r"^(功能|参数|返回值|示例|运行结果|类型|父类型|异常|自\s*[0-9.]+\s*版本开始支持|Since|Deprecated|说明|描述)：?\s*(.*)$")
-TOP_LEVEL_KIND_RE = re.compile(r"^(class|struct|interface|enum|func|macro|const|var|typealias)\s+(.+)$", re.IGNORECASE)
+TOP_LEVEL_KIND_RE = re.compile(r"^(class|struct|interface|enum|func|macro|const|var|typealias|type)\s+(.+)$", re.IGNORECASE)
 MEMBER_KIND_RE = re.compile(r"^(?:(static)\s+)?(prop|let|func|init|operator)\b\s*(.*)$", re.IGNORECASE)
 MACRO_TITLE_RE = re.compile(r"^`?(?P<name>@[A-Za-z_][\w]*)`?\s*(?:宏|Macro)$")
 EXTEND_RE = re.compile(
@@ -368,6 +368,11 @@ def parse_headings(lines: list[str]) -> tuple[str, list[Heading]]:
         content = lines[idx + 1 : next_idx]
         headings.append(Heading(level=level, text=text, content=content))
     return title, headings
+
+
+def is_builtin_page_title(title: str) -> bool:
+    plain = clean_text(strip_inline_html(title))
+    return plain in {"内置类型", "Builtin Types"}
 
 
 def extract_code_blocks(lines: list[str]) -> list[tuple[str, str]]:
@@ -803,6 +808,15 @@ def parse_type_params(signature: str | None, display: str) -> list[str]:
     return [clean_text(item) for item in split_params_src(match.group(1)) if clean_text(item)]
 
 
+def parse_type_params_from_text(text: str | None, display: str) -> list[str]:
+    if not text:
+        return []
+    match = re.search(rf"\b{re.escape(display)}<([^>]+)>", text)
+    if not match:
+        return []
+    return [clean_text(item) for item in split_params_src(match.group(1)) if clean_text(item)]
+
+
 def parse_parent_types_from_signature(signature: str | None) -> list[str]:
     if not signature or "<:" not in signature:
         return []
@@ -962,7 +976,9 @@ def display_from_heading(kind: str, heading_text: str) -> str:
     member_match = MEMBER_KIND_RE.match(heading_text)
     if kind == "func" and member_match:
         tail = member_match.group(3)
-    elif kind in {"class", "struct", "interface", "enum", "func", "macro", "const", "var", "typealias"}:
+    elif kind == "builtin":
+        tail = heading_text
+    elif kind in {"class", "struct", "interface", "enum", "func", "macro", "const", "var", "typealias", "type"}:
         tail = TOP_LEVEL_KIND_RE.match(heading_text).group(2) if TOP_LEVEL_KIND_RE.match(heading_text) else heading_text
     elif kind in {"prop", "let", "init", "operator"}:
         match = MEMBER_KIND_RE.match(heading_text)
@@ -978,6 +994,10 @@ def display_from_heading(kind: str, heading_text: str) -> str:
 
 def normalize_kind(kind: str, container: str | None) -> str:
     kind = kind.lower()
+    if kind == "builtin":
+        return "builtin"
+    if kind == "type":
+        return "typealias"
     if kind == "func":
         return "method" if container else "function"
     if kind == "let":
@@ -1025,6 +1045,8 @@ def parse_symbol_section(
     )
     if top_match:
         raw_kind = top_match.group(1)
+    elif is_builtin_page_title(page_title) and heading.level == 2:
+        raw_kind = "builtin"
     elif macro_match:
         raw_kind = "macro"
     elif member_match:
@@ -1037,7 +1059,7 @@ def parse_symbol_section(
     kind = normalize_kind(raw_kind, container)
     display = display_from_heading(raw_kind.lower(), heading_text)
     symbol_container = container if kind in {"method", "property", "constructor", "operator"} else None
-    if kind in {"class", "struct", "interface", "enum", "typealias"}:
+    if kind in {"class", "struct", "interface", "enum", "typealias", "builtin"}:
         symbol_container = None
     symbol_extension_info = dict(extension_info) if extension_info else None
     if symbol_extension_info and symbol_container:
@@ -1082,6 +1104,8 @@ def parse_symbol_section(
 
     if kind == "macro":
         signature = display
+    elif kind == "builtin" and not signature:
+        signature = strip_inline_html(heading_text).strip()
 
     if kind in {"property", "variable"} and not signature and type_text:
         signature = f"public {'prop' if kind == 'property' else 'let'} {display}: {type_text}"
@@ -1135,9 +1159,9 @@ def parse_symbol_section(
     if kind in {"function", "method", "constructor"} and returns_md is None and inferred_return_type not in {None, "Unit"}:
         returns_md = inferred_return_type
     type_info = None
-    if kind in {"class", "struct", "interface", "enum", "typealias", "exception"}:
+    if kind in {"class", "struct", "interface", "enum", "typealias", "exception", "builtin"}:
         type_info = {
-            "type_params": parse_type_params(signature, display),
+            "type_params": parse_type_params(signature, display) or parse_type_params_from_text(heading_text, display),
             "bases": [],
             "implements": [],
         }
@@ -1204,9 +1228,10 @@ def parse_api_file(src_root: Path, md_path: Path, default_package: str | None = 
         if heading.level == 2:
             top_match = TOP_LEVEL_KIND_RE.match(heading.text)
             macro_match = MACRO_TITLE_RE.match(heading.text)
-            if not top_match and not macro_match:
+            builtin_match = is_builtin_page_title(page_title)
+            if not top_match and not macro_match and not builtin_match:
                 continue
-            raw_kind = top_match.group(1).lower() if top_match else "macro"
+            raw_kind = top_match.group(1).lower() if top_match else ("macro" if macro_match else "builtin")
             current_container = None
             current_extension_info = None
             symbol = parse_symbol_section(
@@ -1214,7 +1239,7 @@ def parse_api_file(src_root: Path, md_path: Path, default_package: str | None = 
             )
             if symbol:
                 symbols.append(symbol)
-                if raw_kind in {"class", "struct", "interface", "enum", "typealias"}:
+                if raw_kind in {"class", "struct", "interface", "enum", "typealias", "builtin"}:
                     current_container = symbol.display
         elif heading.level == 3:
             extend_match = EXTEND_RE.match(heading.text)
