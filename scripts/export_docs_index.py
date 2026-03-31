@@ -19,7 +19,7 @@ SEARCHINDEX_PATTERN = re.compile(
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 LABEL_RE = re.compile(r"^(功能|参数|返回值|示例|运行结果|类型|父类型|异常|自\s*[0-9.]+\s*版本开始支持|Since|Deprecated|说明|描述)：?\s*(.*)$")
 TOP_LEVEL_KIND_RE = re.compile(r"^(class|struct|interface|enum|func|macro|const|var|typealias|type)\s+(.+)$", re.IGNORECASE)
-MEMBER_KIND_RE = re.compile(r"^(?:(static)\s+)?(prop|let|func|init|operator)\b\s*(.*)$", re.IGNORECASE)
+MEMBER_KIND_RE = re.compile(r"^(?:(static)\s+)?(prop|let|func|init)\b\s*(.*)$", re.IGNORECASE)
 OPERATOR_NAME_RE = re.compile(r"operator\s+func\s+([^\s(]+)")
 MACRO_TITLE_RE = re.compile(r"^`?(?P<name>@[A-Za-z_][\w]*)`?\s*(?:宏|Macro)$")
 EXTEND_RE = re.compile(
@@ -89,6 +89,7 @@ def clean_text(text: str) -> str:
     text = text.replace("\xa0", " ")
     text = text.replace("\\<", "<").replace("\\>", ">")
     text = text.replace("\\[", "[").replace("\\]", "]")
+    text = text.replace("\\/", "/")
     text = LINK_RE.sub(r"\1", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
@@ -714,6 +715,8 @@ def sanitize_signature(signature: str | None) -> str | None:
 
 def parse_operator_name(heading_text: str, signature: str | None = None) -> str | None:
     for text in (heading_text, signature or ""):
+        if re.search(r"operator\s+func\s+\(\)\s*\(", text or ""):
+            return "()"
         match = OPERATOR_NAME_RE.search(text or "")
         if match:
             return clean_text(match.group(1))
@@ -892,6 +895,10 @@ def related_links_from_markdown(text: str | None, page_url: str, kind: str) -> l
 def parse_callable_info(signature: str | None, param_docs: list[dict]) -> tuple[dict | None, str | None]:
     if not signature:
         return None, None
+    call_operator_match = re.search(r"operator\s+func\s+\(\)\s*\(\)\s*(?::\s*(.+))?$", signature)
+    if call_operator_match:
+        return_type = clean_text(call_operator_match.group(1) or "") or None
+        return {"return_type": return_type, "params": [], "throws": []}, return_type
     match = re.search(r"\((.*)\)\s*(?::\s*(.+))?$", signature)
     if not match:
         return None, None
@@ -1051,12 +1058,15 @@ def parse_symbol_section(
     deprecated = bool(DEPRECATED_RE.search(heading_text))
     top_match = TOP_LEVEL_KIND_RE.match(heading_text)
     member_match = MEMBER_KIND_RE.match(heading_text)
+    operator_match = re.match(r"^operator\s+func\b", heading_text, re.IGNORECASE)
     macro_match = MACRO_TITLE_RE.match(heading_text)
     constructor_match = (
         re.match(rf"^{re.escape(container)}\s*\(", heading_text) if container else None
     )
     if top_match:
         raw_kind = top_match.group(1)
+    elif operator_match:
+        raw_kind = "operator"
     elif is_builtin_page_title(page_title) and heading.level == 2:
         raw_kind = "builtin"
     elif macro_match:
