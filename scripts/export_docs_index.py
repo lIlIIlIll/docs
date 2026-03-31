@@ -88,6 +88,7 @@ def clean_text(text: str) -> str:
     text = text or ""
     text = text.replace("\xa0", " ")
     text = text.replace("\\<", "<").replace("\\>", ">")
+    text = text.replace("\\[", "[").replace("\\]", "]")
     text = LINK_RE.sub(r"\1", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
@@ -1165,11 +1166,11 @@ def parse_symbol_section(
     aliases = [alias for i, alias in enumerate(aliases) if alias and alias not in aliases[:i]]
     callable_info, inferred_return_type = parse_callable_info(signature, params)
     throws = parse_throws(sections.get("异常", []))
-    if kind in {"function", "method", "constructor"} and callable_info is None:
+    if kind in {"function", "method", "constructor", "operator"} and callable_info is None:
         callable_info = {"return_type": inferred_return_type, "params": [], "throws": []}
     if callable_info is not None:
         callable_info["throws"] = throws
-    if kind in {"function", "method", "constructor"} and returns_md is None and inferred_return_type not in {None, "Unit"}:
+    if kind in {"function", "method", "constructor", "operator"} and returns_md is None and inferred_return_type not in {None, "Unit"}:
         returns_md = inferred_return_type
     type_info = None
     if kind in {"class", "struct", "interface", "enum", "typealias", "exception", "builtin"}:
@@ -1218,7 +1219,7 @@ def parse_symbol_section(
         deprecated=deprecated_info,
         aliases=aliases,
         signature_short=build_signature_short(signature),
-        callable=callable_info if kind in {"function", "method", "constructor"} else None,
+        callable=callable_info if kind in {"function", "method", "constructor", "operator"} else None,
         type_info=type_info,
         value_info=value_info,
         availability=availability,
