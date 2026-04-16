@@ -109,6 +109,16 @@ jobs:
             printf '%s\n' "$version_branches"
             echo "EOF"
           } >> "$GITHUB_ENV"
+          version_book_cache_paths=""
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] || continue
+            version_book_cache_paths="${version_book_cache_paths}book/$branch"$'\n'
+          done <<< "$version_branches"
+          {
+            echo "VERSION_BOOK_CACHE_PATHS<<EOF"
+            printf '%s' "$version_book_cache_paths"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
           echo "DEV_STD_OUT_DIR=$GITHUB_WORKSPACE/book/dev/std" >> "$GITHUB_ENV"
           echo "DEV_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/dev/stdx" >> "$GITHUB_ENV"
           echo "MAIN_STD_OUT_DIR=$GITHUB_WORKSPACE/book/main/std" >> "$GITHUB_ENV"
@@ -250,6 +260,24 @@ jobs:
         with:
           path: book/main
           key: book-main-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
+      - name: Restore version book output cache
+        id: cache_book_versions
+        if: ${{ env.SKIP_BUILD != 'true' && env.VERSION_BOOK_CACHE_PATHS != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VERSION_BOOK_CACHE_PATHS }}
+          key: book-versions-${{ steps.extsha.outputs.version_sha_hash }}
+      - name: Log book cache status
+        if: ${{ env.SKIP_BUILD != 'true' }}
+        run: |
+          set -euo pipefail
+          echo "dev book cache hit: ${CACHE_DEV_HIT:-false}"
+          echo "main book cache hit: ${CACHE_MAIN_HIT:-false}"
+          echo "version book cache hit: ${CACHE_VERSIONS_HIT:-false}"
+        env:
+          CACHE_DEV_HIT: ${{ steps.cache_book_dev.outputs.cache-hit }}
+          CACHE_MAIN_HIT: ${{ steps.cache_book_main.outputs.cache-hit }}
+          CACHE_VERSIONS_HIT: ${{ steps.cache_book_versions.outputs.cache-hit }}
       - name: Decide branch builds
         if: ${{ env.SKIP_BUILD != 'true' }}
         run: |
@@ -265,6 +293,8 @@ jobs:
           fi
           if [[ -z "${VERSION_BRANCHES}" ]]; then
             build_versions="false"
+          elif [[ "${FORCE_REBUILD}" != "true" && "${CACHE_VERSIONS_HIT}" == "true" ]]; then
+            build_versions="false"
           fi
           echo "BUILD_DEV=$build_dev" >> "$GITHUB_ENV"
           echo "BUILD_MAIN=$build_main" >> "$GITHUB_ENV"
@@ -272,6 +302,7 @@ jobs:
         env:
           CACHE_DEV_HIT: ${{ steps.cache_book_dev.outputs.cache-hit }}
           CACHE_MAIN_HIT: ${{ steps.cache_book_main.outputs.cache-hit }}
+          CACHE_VERSIONS_HIT: ${{ steps.cache_book_versions.outputs.cache-hit }}
           VERSION_BRANCHES: ${{ env.VERSION_BRANCHES }}
       - name: Checkout PR base branches
         if: ${{ env.SKIP_BUILD != 'true' && env.BUILD_PR == 'true' }}
@@ -324,6 +355,7 @@ jobs:
           cherry_pick_prs ext_runtime "$STD_PRS"
           cherry_pick_prs ext_stdx "$STDX_PRS"
       - name: Cache cargo
+        id: cache_cargo
         if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/cache@v4
         with:
@@ -335,6 +367,13 @@ jobs:
           key: ${{ runner.os }}-cargo-mdbook-${{ env.MDBOOK_VERSION }}-${{ env.MDBOOK_PAGETOC_VERSION }}-${{ env.MDBOOK_GITINFO_VERSION }}
           restore-keys: |
             ${{ runner.os }}-cargo-mdbook-
+      - name: Log cargo cache status
+        if: ${{ env.SKIP_BUILD != 'true' }}
+        run: |
+          set -euo pipefail
+          echo "cargo cache hit: ${CACHE_CARGO_HIT:-false}"
+        env:
+          CACHE_CARGO_HIT: ${{ steps.cache_cargo.outputs.cache-hit }}
       - name: Install Rust (for cargo)
         if: ${{ env.SKIP_BUILD != 'true' }}
         uses: dtolnay/rust-toolchain@stable
@@ -344,11 +383,25 @@ jobs:
           set -euo pipefail
           source scripts/ci/mdbook_lib.sh
           force="${FORCE_REBUILD}"
+          echo "cargo bin before install:"
+          ls -la "${HOME}/.cargo/bin" || true
+          command -v mdbook || true
+          command -v mdbook-gitinfo || true
+          command -v mdbook-pagetoc || true
+          mdbook --version || true
+          mdbook-gitinfo --version || true
+          mdbook-pagetoc --version || true
           ensure_tool_version mdbook "${MDBOOK_VERSION}" "cargo install --locked mdbook --version ${MDBOOK_VERSION} --force" "$force"
           ensure_tool_version mdbook-gitinfo "${MDBOOK_GITINFO_VERSION}" "cargo install --locked mdbook-gitinfo --version ${MDBOOK_GITINFO_VERSION} --force" "$force"
           ensure_tool_version mdbook-pagetoc "${MDBOOK_PAGETOC_VERSION}" "cargo install mdbook-pagetoc --locked --version ${MDBOOK_PAGETOC_VERSION} --force" "$force"
+          echo "cargo bin after install:"
+          ls -la "${HOME}/.cargo/bin" || true
+          command -v mdbook || true
+          command -v mdbook-gitinfo || true
+          command -v mdbook-pagetoc || true
           mdbook --version
           mdbook-gitinfo --version
+          mdbook-pagetoc --version
       - name: Setup Pages
         if: ${{ env.SKIP_BUILD != 'true' }}
         id: pages
