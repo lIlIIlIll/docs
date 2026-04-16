@@ -13,6 +13,10 @@ on:
         description: "Force rebuild (skip SHA cache check)"
         type: boolean
         default: false
+      version_branches:
+        description: "Comma/space-separated extra version branches to build"
+        type: string
+        default: "release/1.0"
       std_branch:
         description: "Base branch/tag for PR cherry-pick (std)"
         type: string
@@ -56,6 +60,7 @@ jobs:
       MDBOOK_GITINFO_VERSION: 2.0.0
       MDBOOK_PAGETOC_VERSION: 0.3.0
       FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_rebuild || vars.FORCE_REBUILD || 'false' }}
+      VERSION_BRANCHES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_branches || vars.VERSION_BRANCHES || 'release/1.0' }}
       STD_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.std_branch || vars.STD_BRANCH || 'dev' }}
       STDX_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.stdx_branch || vars.STDX_BRANCH || 'dev' }}
       PR_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pr_id || '' }}
@@ -73,6 +78,10 @@ jobs:
       - name: Resolve build options
         run: |
           set -euo pipefail
+          normalize_refs() {
+            printf '%s\n' "$1" | tr ',[:space:]' '\n' | sed '/^$/d' | awk '!seen[$0]++'
+          }
+
           pr_id="${PR_ID}"
           build_pr="false"
           if [[ -n "$pr_id" || -n "${STD_PRS}" || -n "${STDX_PRS}" ]]; then
@@ -94,12 +103,16 @@ jobs:
           echo "BUILD_PR=$build_pr" >> "$GITHUB_ENV"
           echo "FORCE_REBUILD=$force" >> "$GITHUB_ENV"
           echo "FORCE_DEPLOY=$force_deploy" >> "$GITHUB_ENV"
+          version_branches="$(normalize_refs "${VERSION_BRANCHES}")"
+          {
+            echo "VERSION_BRANCHES<<EOF"
+            printf '%s\n' "$version_branches"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
           echo "DEV_STD_OUT_DIR=$GITHUB_WORKSPACE/book/dev/std" >> "$GITHUB_ENV"
           echo "DEV_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/dev/stdx" >> "$GITHUB_ENV"
           echo "MAIN_STD_OUT_DIR=$GITHUB_WORKSPACE/book/main/std" >> "$GITHUB_ENV"
           echo "MAIN_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/main/stdx" >> "$GITHUB_ENV"
-          echo "RELEASE_STD_OUT_DIR=$GITHUB_WORKSPACE/book/release/1.0/std" >> "$GITHUB_ENV"
-          echo "RELEASE_STDX_OUT_DIR=$GITHUB_WORKSPACE/book/release/1.0/stdx" >> "$GITHUB_ENV"
           if [[ "$build_pr" == "true" ]]; then
             pr_root="$GITHUB_WORKSPACE/book/pr/$pr_id"
             echo "PR_OUT_ROOT=$pr_root" >> "$GITHUB_ENV"
@@ -152,40 +165,59 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/ci/mdbook_lib.sh
+          normalize_ref_name() {
+            printf '%s' "$1" | sed 's/[^A-Za-z0-9._-]/_/g'
+          }
+
           RUNTIME_DEV_SHA=$(get_sha ext_runtime origin/dev)
           STDX_DEV_SHA=$(get_sha ext_stdx origin/dev)
           RUNTIME_MAIN_SHA=$(get_sha ext_runtime origin/main)
           STDX_MAIN_SHA=$(get_sha ext_stdx origin/main)
-          RUNTIME_RELEASE_SHA=$(get_sha ext_runtime origin/release/1.0)
-          STDX_RELEASE_SHA=$(get_sha ext_stdx origin/release/1.0)
           echo "runtime_dev_sha=$RUNTIME_DEV_SHA"   >> $GITHUB_OUTPUT
           echo "stdx_dev_sha=$STDX_DEV_SHA"         >> $GITHUB_OUTPUT
           echo "runtime_main_sha=$RUNTIME_MAIN_SHA" >> $GITHUB_OUTPUT
           echo "stdx_main_sha=$STDX_MAIN_SHA"       >> $GITHUB_OUTPUT
-          echo "runtime_release_sha=$RUNTIME_RELEASE_SHA" >> $GITHUB_OUTPUT
-          echo "stdx_release_sha=$STDX_RELEASE_SHA"       >> $GITHUB_OUTPUT
           echo "Runtime dev : $RUNTIME_DEV_SHA"
           echo "Stdx dev    : $STDX_DEV_SHA"
           echo "Runtime main: $RUNTIME_MAIN_SHA"
           echo "Stdx main   : $STDX_MAIN_SHA"
-          echo "Runtime rel : $RUNTIME_RELEASE_SHA"
-          echo "Stdx rel    : $STDX_RELEASE_SHA"
           mkdir -p .ext-build-cache
-          cat > .ext-build-cache/sha.txt <<EOF
-          runtime_dev_sha=$RUNTIME_DEV_SHA
-          stdx_dev_sha=$STDX_DEV_SHA
-          runtime_main_sha=$RUNTIME_MAIN_SHA
-          stdx_main_sha=$STDX_MAIN_SHA
-          runtime_release_sha=$RUNTIME_RELEASE_SHA
-          stdx_release_sha=$STDX_RELEASE_SHA
-          EOF
+          {
+            echo "runtime_dev_sha=$RUNTIME_DEV_SHA"
+            echo "stdx_dev_sha=$STDX_DEV_SHA"
+            echo "runtime_main_sha=$RUNTIME_MAIN_SHA"
+            echo "stdx_main_sha=$STDX_MAIN_SHA"
+          } > .ext-build-cache/sha.txt
+          version_sha_pairs=""
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] || continue
+            runtime_sha=$(get_sha ext_runtime "origin/$branch")
+            stdx_sha=$(get_sha ext_stdx "origin/$branch")
+            branch_key="$(normalize_ref_name "$branch")"
+            echo "runtime_${branch_key}_sha=$runtime_sha" >> $GITHUB_OUTPUT
+            echo "stdx_${branch_key}_sha=$stdx_sha"       >> $GITHUB_OUTPUT
+            echo "Runtime ${branch}: $runtime_sha"
+            echo "Stdx ${branch}   : $stdx_sha"
+            {
+              echo "runtime_${branch_key}_sha=$runtime_sha"
+              echo "stdx_${branch_key}_sha=$stdx_sha"
+            } >> .ext-build-cache/sha.txt
+            version_sha_pairs="${version_sha_pairs}${branch}=${runtime_sha}:${stdx_sha}"$'\n'
+          done <<< "${VERSION_BRANCHES}"
+          if [[ -n "$version_sha_pairs" ]]; then
+            version_sha_hash=$(printf '%s' "$version_sha_pairs" | sha256sum | awk '{print $1}')
+          else
+            version_sha_hash="none"
+          fi
+          echo "version_sha_hash=$version_sha_hash" >> $GITHUB_OUTPUT
+          echo "Version hash : $version_sha_hash"
       - name: Check cache by SHAs
         id: cachecheck
         if: ${{ env.FORCE_REBUILD != 'true' }}
         uses: actions/cache@v4
         with:
           path: .ext-build-cache
-          key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
+          key: ext-sha-${{ steps.extsha.outputs.runtime_dev_sha }}-${{ steps.extsha.outputs.stdx_dev_sha }}-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}-${{ steps.extsha.outputs.version_sha_hash }}
       - name: Decide skip build/deploy
         id: decide
         env:
@@ -218,36 +250,29 @@ jobs:
         with:
           path: book/main
           key: book-main-${{ steps.extsha.outputs.runtime_main_sha }}-${{ steps.extsha.outputs.stdx_main_sha }}
-      - name: Restore release book output cache
-        id: cache_book_release
-        if: ${{ env.SKIP_BUILD != 'true' }}
-        uses: actions/cache@v4
-        with:
-          path: book/release/1.0
-          key: book-release-${{ steps.extsha.outputs.runtime_release_sha }}-${{ steps.extsha.outputs.stdx_release_sha }}
       - name: Decide branch builds
         if: ${{ env.SKIP_BUILD != 'true' }}
         run: |
           set -euo pipefail
           build_dev="true"
           build_main="true"
-          build_release="true"
+          build_versions="true"
           if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_DEV_HIT}" == "true" ]]; then
             build_dev="false"
           fi
           if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_MAIN_HIT}" == "true" ]]; then
             build_main="false"
           fi
-          if [[ "${FORCE_REBUILD}" != "true" && "${CACHE_RELEASE_HIT}" == "true" ]]; then
-            build_release="false"
+          if [[ -z "${VERSION_BRANCHES}" ]]; then
+            build_versions="false"
           fi
           echo "BUILD_DEV=$build_dev" >> "$GITHUB_ENV"
           echo "BUILD_MAIN=$build_main" >> "$GITHUB_ENV"
-          echo "BUILD_RELEASE=$build_release" >> "$GITHUB_ENV"
+          echo "BUILD_VERSIONS=$build_versions" >> "$GITHUB_ENV"
         env:
           CACHE_DEV_HIT: ${{ steps.cache_book_dev.outputs.cache-hit }}
           CACHE_MAIN_HIT: ${{ steps.cache_book_main.outputs.cache-hit }}
-          CACHE_RELEASE_HIT: ${{ steps.cache_book_release.outputs.cache-hit }}
+          VERSION_BRANCHES: ${{ env.VERSION_BRANCHES }}
       - name: Checkout PR base branches
         if: ${{ env.SKIP_BUILD != 'true' && env.BUILD_PR == 'true' }}
         run: |

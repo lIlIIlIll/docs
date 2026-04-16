@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/mdbook_lib.sh"
 
 BUILD_DEV="${BUILD_DEV:-false}"
 BUILD_MAIN="${BUILD_MAIN:-false}"
-BUILD_RELEASE="${BUILD_RELEASE:-false}"
+BUILD_VERSIONS="${BUILD_VERSIONS:-false}"
 BUILD_PR="${BUILD_PR:-false}"
 
 build_std_dev() {
@@ -37,18 +37,20 @@ build_stdx_main() {
   build_book "$GITHUB_WORKSPACE/stdx_main_book" "Cangjie Stdx API (main)" "$MAIN_STDX_OUT_DIR"
 }
 
-build_std_release() {
+build_version_branch() {
+  local branch="$1"
+  local version_root="$GITHUB_WORKSPACE/book/$branch"
+  local std_out_dir="$version_root/std"
+  local stdx_out_dir="$version_root/stdx"
   local std_ref
-  std_ref="$(pick_ref ext_runtime release/1.0 origin/release/1.0 main origin/main HEAD)"
-  prepare_std_book ext_runtime "$GITHUB_WORKSPACE/std_release_book" "$std_ref" ""
-  build_book "$GITHUB_WORKSPACE/std_release_book" "Cangjie Std API (release/1.0)" "$RELEASE_STD_OUT_DIR"
-}
-
-build_stdx_release() {
   local stdx_ref
-  stdx_ref="$(pick_ref ext_stdx release/1.0 origin/release/1.0 main origin/main HEAD)"
-  prepare_stdx_book ext_stdx "$GITHUB_WORKSPACE/stdx_release_book" "$stdx_ref" ""
-  build_book "$GITHUB_WORKSPACE/stdx_release_book" "Cangjie Stdx API (release/1.0)" "$RELEASE_STDX_OUT_DIR"
+
+  std_ref="$(pick_ref ext_runtime "$branch" "origin/$branch" main origin/main HEAD)"
+  stdx_ref="$(pick_ref ext_stdx "$branch" "origin/$branch" main origin/main HEAD)"
+  prepare_std_book ext_runtime "$GITHUB_WORKSPACE/std_${branch//\//_}_book" "$std_ref" ""
+  build_book "$GITHUB_WORKSPACE/std_${branch//\//_}_book" "Cangjie Std API ($branch)" "$std_out_dir"
+  prepare_stdx_book ext_stdx "$GITHUB_WORKSPACE/stdx_${branch//\//_}_book" "$stdx_ref" ""
+  build_book "$GITHUB_WORKSPACE/stdx_${branch//\//_}_book" "Cangjie Stdx API ($branch)" "$stdx_out_dir"
 }
 
 build_std_pr() {
@@ -67,7 +69,10 @@ write_redirects() {
   write_redirect "$book_root/index.html" "./dev/std/" "Redirecting…"
   write_redirect "$book_root/dev/index.html" "./std/" "Redirecting…"
   write_redirect "$book_root/main/index.html" "./std/" "Redirecting…"
-  write_redirect "$book_root/release/1.0/index.html" "./std/" "Redirecting…"
+  while IFS= read -r branch; do
+    [[ -n "$branch" ]] || continue
+    write_redirect "$book_root/$branch/index.html" "./std/" "Redirecting…"
+  done <<< "${VERSION_BRANCHES:-}"
 
   if [[ "${BUILD_PR}" == "true" ]]; then
     mkdir -p "$PR_OUT_ROOT"
@@ -86,10 +91,13 @@ assert_outputs() {
   test -f "$MAIN_STD_OUT_DIR/docs-index.json" || (echo "main std docs-index.json missing" && exit 2)
   test -f "$MAIN_STDX_OUT_DIR/index.html" || (echo "main stdx index.html missing" && exit 2)
   test -f "$MAIN_STDX_OUT_DIR/docs-index.json" || (echo "main stdx docs-index.json missing" && exit 2)
-  test -f "$RELEASE_STD_OUT_DIR/index.html" || (echo "release std index.html missing" && exit 2)
-  test -f "$RELEASE_STD_OUT_DIR/docs-index.json" || (echo "release std docs-index.json missing" && exit 2)
-  test -f "$RELEASE_STDX_OUT_DIR/index.html" || (echo "release stdx index.html missing" && exit 2)
-  test -f "$RELEASE_STDX_OUT_DIR/docs-index.json" || (echo "release stdx docs-index.json missing" && exit 2)
+  while IFS= read -r branch; do
+    [[ -n "$branch" ]] || continue
+    test -f "$GITHUB_WORKSPACE/book/$branch/std/index.html" || (echo "$branch std index.html missing" && exit 2)
+    test -f "$GITHUB_WORKSPACE/book/$branch/std/docs-index.json" || (echo "$branch std docs-index.json missing" && exit 2)
+    test -f "$GITHUB_WORKSPACE/book/$branch/stdx/index.html" || (echo "$branch stdx index.html missing" && exit 2)
+    test -f "$GITHUB_WORKSPACE/book/$branch/stdx/docs-index.json" || (echo "$branch stdx docs-index.json missing" && exit 2)
+  done <<< "${VERSION_BRANCHES:-}"
   grep -nE 'pagetoc\.(js|css)' "$DEV_STD_OUT_DIR/index.html" || echo 'pagetoc asset missing'
   find "$GITHUB_WORKSPACE/book" -path '*/theme/pagetoc.*' -print || echo 'theme/pagetoc.* missing'
   grep -nE 'class="pagetoc|id="pagetoc' "$DEV_STD_OUT_DIR/index.html" || echo 'pagetoc container missing'
@@ -112,9 +120,11 @@ main() {
     build_std_main
     build_stdx_main
   fi
-  if [[ "${BUILD_RELEASE}" == "true" ]]; then
-    build_std_release
-    build_stdx_release
+  if [[ "${BUILD_VERSIONS}" == "true" ]]; then
+    while IFS= read -r branch; do
+      [[ -n "$branch" ]] || continue
+      build_version_branch "$branch"
+    done <<< "${VERSION_BRANCHES:-}"
   fi
   if [[ "${BUILD_PR}" == "true" ]]; then
     build_std_pr

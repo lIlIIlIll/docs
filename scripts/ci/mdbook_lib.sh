@@ -50,13 +50,21 @@ clone_ext_repo() {
   local dir="$2"
   local branch_hint="${3:-}"
   local depth="${4:-1}"
+  local extra_refs=()
+  local branch
   retry_clone "$url" "$dir" "$depth" "$branch_hint"
-  timeout 30 git -C "$dir" fetch --prune --tags --depth "$depth" origin dev main release/1.0 ${branch_hint:+ "$branch_hint"}
+  while IFS= read -r branch; do
+    [[ -n "$branch" ]] || continue
+    extra_refs+=("$branch")
+  done <<< "${VERSION_BRANCHES:-}"
+  timeout 30 git -C "$dir" fetch --prune --tags --depth "$depth" origin dev main "${extra_refs[@]}" ${branch_hint:+ "$branch_hint"}
   # Detach HEAD so we can force-update local branches safely.
   git -C "$dir" checkout --detach
   ensure_local_branch "$dir" dev
   ensure_local_branch "$dir" main
-  ensure_local_branch "$dir" "release/1.0"
+  for branch in "${extra_refs[@]}"; do
+    ensure_local_branch "$dir" "$branch"
+  done
   if [[ -n "$branch_hint" ]]; then
     ensure_local_branch "$dir" "$branch_hint"
   fi
